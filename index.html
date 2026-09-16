@@ -104,6 +104,7 @@ h1{font-family:'Oswald',sans-serif;font-weight:600;font-size:clamp(26px,7vw,34px
 .ex .wt.placeholder{font-weight:400;font-style:italic;color:var(--ink-muted);font-size:12px;}
 .ex{cursor:pointer;}
 .note{font-size:12px;color:var(--ink-muted);font-style:italic;padding:0 0 4px;margin-top:-4px;}
+.prev{font-size:11.5px;color:var(--accent);font-family:'JetBrains Mono',monospace;padding:0 0 4px;margin-top:-4px;font-variant-numeric:tabular-nums;}
 
 .logged{font-size:12px;color:var(--success-ink);background:var(--success-bg);border-radius:8px;padding:4px 8px;margin:0 0 4px;display:inline-flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;}
 .logged svg{width:11px;height:11px;flex:0 0 auto;}
@@ -198,6 +199,11 @@ function saveTracking(){ try { localStorage.setItem(TRACK_KEY, JSON.stringify(tr
 
 function shortLabel(w){ return 'B' + w.block + '·U' + w.week; }
 function dateBadge(title){ const m = title.match(/(\d{1,2}\.\d{2})/); return m ? m[1] : ''; }
+function isAccessory(ex){ return !/^\d+$/.test(String(ex.reps || '').trim()); }
+function findPrevExercise(prevWeek, dayIdx, name){
+  if(!prevWeek || !prevWeek.days[dayIdx]) return null;
+  return prevWeek.days[dayIdx].exercises.find(e=>e.name===name) || null;
+}
 function weekDoneCount(w){ return w.days.reduce((n,_,di)=> n + (isDone(w.gid,di)?1:0), 0); }
 
 function computeStreak(){
@@ -350,6 +356,7 @@ function renderWeek(){
     return;
   }
   const w = WEEKS[selectedIdx];
+  const prevWeek = WEEKS[selectedIdx + 1] || null;
   document.getElementById('blockLabel').textContent = 'Blokk ' + w.block + ' · Uke ' + w.week + (selectedIdx===0 ? ' · gjeldende' : '');
   document.getElementById('weekTitle').textContent = shortLabel(w) + (selectedIdx===0 ? ' (denne uken)' : '');
   document.getElementById('weekMeta').textContent = dateBadge(w.title);
@@ -410,6 +417,21 @@ function renderWeek(){
         note.className = 'note';
         note.textContent = ex.note;
         list.appendChild(note);
+      }
+      if(isAccessory(ex)){
+        const prevEx = findPrevExercise(prevWeek, di, ex.name);
+        if(prevEx){
+          const hasActual = prevEx.actualSets || prevEx.actualReps || prevEx.actualWeight;
+          const prev = document.createElement('div');
+          prev.className = 'prev';
+          if(hasActual){
+            prev.textContent = 'Sist gjort: ' + (prevEx.actualSets || prevEx.sets) + '×' + (prevEx.actualReps || '—') + ' · ' + (prevEx.actualWeight || '—');
+          } else {
+            const prevWt = prevEx.weight === 'Skriv inn vekt' ? '—' : (prevEx.weight || '—');
+            prev.textContent = 'Forrige uke foreslo: ' + prevEx.sets + '×' + prevEx.reps + ' · ' + prevWt;
+          }
+          list.appendChild(prev);
+        }
       }
       if(ex.actualSets || ex.actualReps || ex.actualWeight){
         const logged = document.createElement('div');
