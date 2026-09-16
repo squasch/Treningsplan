@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14171A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Styrkeplan">
+<title>Styrkeplan Mathias</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=Work+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
+<style>
+:root{
+  --bg:#EEF0F1; --surface:#FFFFFF; --surface-2:#E3E7E9;
+  --ink:#1B1F22; --ink-muted:#5B6368; --border:#D7DBDD;
+  --accent:#C4491F; --accent-ink:#FFFFFF;
+  --success:#2F7A4D; --success-bg:#E1F0E6; --success-ink:#1F5B37;
+  --warn-bg:#F4E3D6; --warn-ink:#7A4A1F;
+  --radius:14px;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#14171A; --surface:#1C2024; --surface-2:#242A2E;
+    --ink:#ECEEEF; --ink-muted:#97A0A6; --border:#2E3338;
+    --accent:#E2703F; --accent-ink:#17110B;
+    --success:#5FB37E; --success-bg:#1B2A21; --success-ink:#8FD3A5;
+    --warn-bg:#2E2416; --warn-ink:#E3B27C;
+  }
+}
+*{box-sizing:border-box;}
+html,body{margin:0;}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:'Work Sans',system-ui,sans-serif;
+  padding:calc(env(safe-area-inset-top) + 12px) calc(env(safe-area-inset-right) + 16px) calc(env(safe-area-inset-bottom) + 3rem) calc(env(safe-area-inset-left) + 16px);
+  min-height:100vh;
+}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+.wrap{max-width:840px;margin:0 auto;}
+header.top{padding:.75rem 0 1.1rem;display:flex;flex-direction:column;gap:6px;}
+.eyebrow-row{display:flex;justify-content:space-between;align-items:center;gap:10px;}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:600;}
+.refresh{
+  border:0.5px solid var(--border);background:var(--surface);color:var(--ink-muted);
+  border-radius:999px;padding:5px 12px;font-size:11px;font-family:'JetBrains Mono',monospace;font-weight:600;
+  cursor:pointer;display:flex;align-items:center;gap:5px;
+}
+.refresh svg{width:12px;height:12px;}
+.refresh.spin svg{animation:spin 0.8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+h1{font-family:'Oswald',sans-serif;font-weight:600;font-size:clamp(26px,7vw,34px);margin:0;letter-spacing:.01em;text-wrap:balance;}
+.sub{color:var(--ink-muted);font-size:13px;margin:0;}
+.status{font-size:12px;color:var(--ink-muted);margin:2px 0 0;min-height:16px;}
+.status.err{color:var(--warn-ink);}
+.stat-row{display:flex;gap:10px;margin-top:.75rem;flex-wrap:wrap;}
+.stat{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:10px 16px;min-width:100px;flex:1 1 100px;}
+.stat .n{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:22px;font-weight:600;line-height:1;}
+.stat .l{font-size:11px;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.06em;margin-top:4px;}
+
+.ticker{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 14px;margin-bottom:.5rem;scrollbar-width:thin;}
+.chip{
+  flex:0 0 auto;background:var(--surface);border:0.5px solid var(--border);border-radius:999px;
+  padding:8px 14px;font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;
+  color:var(--ink-muted);cursor:pointer;display:flex;align-items:center;gap:7px;
+}
+.chip.active{background:var(--ink);color:var(--bg);border-color:var(--ink);}
+.chip .dot{width:7px;height:7px;border-radius:50%;background:var(--border);}
+.chip .dot.some{background:var(--accent);}
+.chip .dot.all{background:var(--success);}
+.chip.active .dot.some{background:var(--accent);}
+.chip.active .dot.all{background:var(--success);}
+
+.week-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:1.5rem 0 .9rem;flex-wrap:wrap;}
+.week-head h2{font-family:'Oswald',sans-serif;font-size:19px;font-weight:600;margin:0;}
+.week-head .date{font-size:13px;color:var(--ink-muted);}
+
+.days{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
+@media (max-width:640px){.days{grid-template-columns:1fr;}}
+
+.card{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:1.1rem 1.15rem;display:flex;flex-direction:column;gap:.8rem;}
+.card.done{border-color:var(--success);}
+.card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
+.card-head .dtitle{font-family:'Oswald',sans-serif;font-weight:500;font-size:15px;line-height:1.3;text-wrap:balance;}
+.card-head .dnum{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent);font-weight:600;letter-spacing:.05em;}
+
+.toggle{
+  flex:0 0 auto;border:0.5px solid var(--border);background:var(--surface-2);color:var(--ink-muted);
+  border-radius:999px;padding:6px 12px 6px 10px;font-size:12px;font-weight:600;font-family:'Work Sans',sans-serif;
+  display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;
+}
+.toggle svg{width:13px;height:13px;flex:0 0 auto;}
+.toggle.on{background:var(--success-bg);color:var(--success-ink);border-color:var(--success);}
+
+.ex-list{display:flex;flex-direction:column;}
+.ex{display:flex;align-items:baseline;gap:10px;padding:6px 0;border-top:0.5px solid var(--border);}
+.ex:first-child{border-top:none;}
+.ex .name{flex:1 1 auto;font-size:13.5px;line-height:1.35;}
+.ex .sxr{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13px;color:var(--ink-muted);white-space:nowrap;}
+.ex .wt{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13.5px;font-weight:600;min-width:64px;text-align:right;white-space:nowrap;}
+.ex .wt.placeholder{font-weight:400;font-style:italic;color:var(--ink-muted);font-size:12px;}
+.note{font-size:12px;color:var(--ink-muted);font-style:italic;padding:0 0 4px;margin-top:-4px;}
+
+.empty{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:2rem 1.2rem;text-align:center;color:var(--ink-muted);font-size:13.5px;}
+
+footer{margin-top:2.5rem;font-size:12px;color:var(--ink-muted);border-top:0.5px solid var(--border);padding-top:1rem;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h2 class="sr-only">Styrkeplan for Mathias: live treningsprogram hentet direkte fra Google Sheets, med daglig oversikt og avkrysning av fullførte økter.</h2>
+
+  <header class="top">
+    <div class="eyebrow-row">
+      <div class="eyebrow" id="blockLabel">Blokk · Uke</div>
+      <button class="refresh" id="refreshBtn" aria-label="Hent på nytt">
+        <svg viewBox="0 0 16 16" fill="none"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2v3.5H10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Oppdater
+      </button>
+    </div>
+    <h1>Styrkeplan Mathias</h1>
+    <p class="sub" id="weekDate">—</p>
+    <p class="status" id="statusLine"></p>
+    <div class="stat-row">
+      <div class="stat"><div class="n" id="statWeek">0/0</div><div class="l">denne uken</div></div>
+      <div class="stat"><div class="n" id="statStreak">0</div><div class="l">økter på rad</div></div>
+      <div class="stat"><div class="n" id="statTotal">0/0</div><div class="l">siste uker</div></div>
+    </div>
+  </header>
+
+  <nav class="ticker" id="ticker" aria-label="Velg uke"></nav>
+
+  <div class="week-head">
+    <h2 id="weekTitle">—</h2>
+    <span class="date" id="weekMeta"></span>
+  </div>
+
+  <div class="days" id="days"><div class="empty">Henter treningsplan…</div></div>
+
+  <footer>Henter live fra Google Sheets ved hver åpning. Avkrysning lagres kun på denne enheten. <span id="cacheNote"></span></footer>
+</div>
+
+<script>
+const SHEET_ID = '1dachUYIF2fl2WUWxoN5fXoBttnaY5Wt2qk5LWBYA3J4';
+const API_KEY = 'AIzaSyBqbl0Man90jEanEYayUo89IkaraxtEBBg';
+const MAX_WEEKS = 10;
+const TRACK_KEY = 'styrkeplan_tracking_v1';
+const CACHE_KEY = 'styrkeplan_weeks_cache_v1';
+const STALE_MS = 5 * 60 * 1000;
+
+let WEEKS = [];
+let selectedIdx = 0;
+let tracking = {};
+try { tracking = JSON.parse(localStorage.getItem(TRACK_KEY) || '{}'); } catch(e) { tracking = {}; }
+let lastFetchedAt = null;
+
+function dayId(gid, di){ return gid + '_d' + di; }
+function isDone(gid, di){ return !!(tracking[dayId(gid,di)] && tracking[dayId(gid,di)].done); }
+function saveTracking(){ try { localStorage.setItem(TRACK_KEY, JSON.stringify(tracking)); } catch(e) {} }
+
+function shortLabel(w){ return 'B' + w.block + '·U' + w.week; }
+function dateBadge(title){ const m = title.match(/(\d{1,2}\.\d{2})/); return m ? m[1] : ''; }
+function weekDoneCount(w){ return w.days.reduce((n,_,di)=> n + (isDone(w.gid,di)?1:0), 0); }
+
+function computeStreak(){
+  let streak = 0;
+  outer:
+  for(let wi=0; wi<WEEKS.length; wi++){
+    const w = WEEKS[wi];
+    for(let di=w.days.length-1; di>=0; di--){
+      if(isDone(w.gid,di)) streak++;
+      else break outer;
+    }
+  }
+  return streak;
+}
+
+function setStatus(text, isErr){
+  const el = document.getElementById('statusLine');
+  el.textContent = text || '';
+  el.className = 'status' + (isErr ? ' err' : '');
+}
+
+function renderTicker(){
+  const el = document.getElementById('ticker');
+  el.innerHTML = '';
+  WEEKS.forEach((w,i)=>{
+    const done = weekDoneCount(w);
+    const btn = document.createElement('button');
+    btn.className = 'chip' + (i===selectedIdx ? ' active' : '');
+    const dotClass = done===0 ? '' : (done===w.days.length ? 'all' : 'some');
+    btn.innerHTML = '<span class="dot ' + dotClass + '"></span>' + shortLabel(w);
+    btn.addEventListener('click', ()=>{ selectedIdx = i; renderAll(); });
+    el.appendChild(btn);
+  });
+}
+
+function renderWeek(){
+  const days = document.getElementById('days');
+  if(WEEKS.length === 0){
+    document.getElementById('blockLabel').textContent = 'Blokk · Uke';
+    document.getElementById('weekTitle').textContent = '—';
+    document.getElementById('weekMeta').textContent = '';
+    document.getElementById('weekDate').textContent = '—';
+    days.innerHTML = '<div class="empty">Ingen data ennå. Trykk «Oppdater».</div>';
+    return;
+  }
+  const w = WEEKS[selectedIdx];
+  document.getElementById('blockLabel').textContent = 'Blokk ' + w.block + ' · Uke ' + w.week + (selectedIdx===0 ? ' · gjeldende' : '');
+  document.getElementById('weekTitle').textContent = shortLabel(w) + (selectedIdx===0 ? ' (denne uken)' : '');
+  document.getElementById('weekMeta').textContent = dateBadge(w.title);
+  document.getElementById('weekDate').textContent = w.title;
+
+  days.innerHTML = '';
+  w.days.forEach((d,di)=>{
+    const done = isDone(w.gid,di);
+    const card = document.createElement('div');
+    card.className = 'card' + (done ? ' done' : '');
+
+    const head = document.createElement('div');
+    head.className = 'card-head';
+    const titleWrap = document.createElement('div');
+    const dnum = document.createElement('div');
+    dnum.className = 'dnum';
+    dnum.textContent = 'DAG ' + (di+1);
+    const dtitle = document.createElement('div');
+    dtitle.className = 'dtitle';
+    dtitle.textContent = d.title.replace(/^Dag \d+:\s*/, '');
+    titleWrap.appendChild(dnum);
+    titleWrap.appendChild(dtitle);
+
+    const toggle = document.createElement('button');
+    toggle.className = 'toggle' + (done ? ' on' : '');
+    toggle.innerHTML = (done
+      ? '<svg viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Fullført'
+      : 'Merk fullført');
+    toggle.addEventListener('click', ()=> toggleDay(w.gid, di));
+
+    head.appendChild(titleWrap);
+    head.appendChild(toggle);
+    card.appendChild(head);
+
+    const list = document.createElement('div');
+    list.className = 'ex-list';
+    d.exercises.forEach(ex=>{
+      const row = document.createElement('div');
+      row.className = 'ex';
+      const name = document.createElement('div');
+      name.className = 'name';
+      name.textContent = ex.name;
+      const sxr = document.createElement('div');
+      sxr.className = 'sxr';
+      sxr.textContent = ex.sets + '×' + ex.reps;
+      const wt = document.createElement('div');
+      const isPlaceholder = ex.weight === 'Skriv inn vekt';
+      wt.className = 'wt' + (isPlaceholder ? ' placeholder' : '');
+      wt.textContent = ex.weight || '';
+      row.appendChild(name);
+      row.appendChild(sxr);
+      row.appendChild(wt);
+      list.appendChild(row);
+      if(ex.note){
+        const note = document.createElement('div');
+        note.className = 'note';
+        note.textContent = ex.note;
+        list.appendChild(note);
+      }
+    });
+    card.appendChild(list);
+    days.appendChild(card);
+  });
+}
+
+function renderStats(){
+  if(WEEKS.length === 0){
+    document.getElementById('statWeek').textContent = '0/0';
+    document.getElementById('statStreak').textContent = '0';
+    document.getElementById('statTotal').textContent = '0/0';
+    return;
+  }
+  const cur = WEEKS[0];
+  document.getElementById('statWeek').textContent = weekDoneCount(cur) + '/' + cur.days.length;
+  document.getElementById('statStreak').textContent = computeStreak();
+  let doneT=0, totT=0;
+  WEEKS.forEach(w=>{ totT += w.days.length; doneT += weekDoneCount(w); });
+  document.getElementById('statTotal').textContent = doneT + '/' + totT;
+}
+
+function renderAll(){
+  renderTicker();
+  renderWeek();
+  renderStats();
+}
+
+function toggleDay(gid, di){
+  const id = dayId(gid, di);
+  const cur = !!(tracking[id] && tracking[id].done);
+  tracking[id] = {done: !cur, doneAt: new Date().toISOString()};
+  saveTracking();
+  renderAll();
+}
+
+async function fetchJSON(url){
+  const res = await fetch(url);
+  if(!res.ok){
+    let msg = 'HTTP ' + res.status;
+    try { const body = await res.json(); if(body?.error?.message) msg = body.error.message; } catch(e){}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+function encodeRange(title){
+  const escaped = title.replace(/'/g, "''");
+  return encodeURIComponent("'" + escaped + "'!A1:K100");
+}
+
+function parseWeek(tabMeta, values){
+  const m = tabMeta.title.match(/^B(\d+)\s*U([\d,.]+)/i);
+  const block = m ? parseInt(m[1],10) : null;
+  const weekRaw = m ? m[2] : '';
+  const week = /^\d+$/.test(weekRaw) ? parseInt(weekRaw,10) : weekRaw;
+
+  const days = [];
+  let current = null;
+  for(const row of values){
+    const a = (row[0] || '').toString();
+    if(/^Dag\s*\d+/i.test(a)){
+      current = {title: a, exercises: []};
+      days.push(current);
+      continue;
+    }
+    if(!current) continue;
+    const name = row[2];
+    if(!name) continue;
+    const ex = {name, sets: row[4] || '', reps: row[5] || '', weight: row[7] || ''};
+    if(row[8]) ex.note = row[8];
+    current.exercises.push(ex);
+  }
+  return {gid: String(tabMeta.sheetId), title: tabMeta.title, block, week, days};
+}
+
+function loadFromCache(){
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if(!raw) return false;
+    const parsed = JSON.parse(raw);
+    if(!parsed.weeks || !parsed.weeks.length) return false;
+    WEEKS = parsed.weeks;
+    lastFetchedAt = parsed.fetchedAt ? new Date(parsed.fetchedAt) : null;
+    return true;
+  } catch(e) { return false; }
+}
+
+function saveCache(){
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({weeks: WEEKS, fetchedAt: new Date().toISOString()})); } catch(e) {}
+}
+
+async function loadFromSheet(){
+  const btn = document.getElementById('refreshBtn');
+  btn.classList.add('spin');
+  setStatus('Henter treningsplan…');
+  try{
+    const meta = await fetchJSON(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?key=${API_KEY}&fields=sheets.properties`);
+    const tabs = meta.sheets.map(s=>s.properties).filter(p=>/^B\d+\s*U[\d,.]+/i.test(p.title));
+    tabs.sort((a,b)=>a.index-b.index);
+    const chosen = tabs.slice(0, MAX_WEEKS);
+
+    const weeks = [];
+    const chunkSize = 5;
+    for(let i=0;i<chosen.length;i+=chunkSize){
+      const chunk = chosen.slice(i, i+chunkSize);
+      const rangesParam = chunk.map(t=>'ranges=' + encodeRange(t.title)).join('&');
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchGet?key=${API_KEY}&valueRenderOption=FORMATTED_VALUE&${rangesParam}`;
+      const data = await fetchJSON(url);
+      data.valueRanges.forEach((vr, j) => weeks.push(parseWeek(chunk[j], vr.values || [])));
+    }
+
+    WEEKS = weeks;
+    lastFetchedAt = new Date();
+    selectedIdx = 0;
+    saveCache();
+    setStatus('Oppdatert ' + lastFetchedAt.toLocaleTimeString('nb-NO', {hour:'2-digit', minute:'2-digit'}));
+    document.getElementById('cacheNote').textContent = '';
+  } catch(err){
+    console.error(err);
+    const hadCache = loadFromCache();
+    if(hadCache){
+      setStatus('Kunne ikke hente nye data (' + err.message + '). Viser sist lagrede plan.', true);
+      document.getElementById('cacheNote').textContent = lastFetchedAt ? ('Sist hentet ' + lastFetchedAt.toLocaleString('nb-NO')) + '.' : '';
+    } else {
+      setStatus('Kunne ikke hente treningsplanen: ' + err.message, true);
+    }
+  } finally {
+    btn.classList.remove('spin');
+    renderAll();
+  }
+}
+
+document.getElementById('refreshBtn').addEventListener('click', loadFromSheet);
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState === 'visible' && lastFetchedAt && (Date.now() - lastFetchedAt.getTime() > STALE_MS)){
+    loadFromSheet();
+  }
+});
+
+if(loadFromCache()) renderAll();
+loadFromSheet();
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=> navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
+</script>
+</body>
+</html>
