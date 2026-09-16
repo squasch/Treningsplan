@@ -212,6 +212,11 @@ function saveTracking(){ try { localStorage.setItem(TRACK_KEY, JSON.stringify(tr
 function shortLabel(w){ return 'B' + w.block + '·U' + w.week; }
 function dateBadge(title){ const m = title.match(/(\d{1,2}\.\d{2})/); return m ? m[1] : ''; }
 function isAccessory(ex){ return !/^\d+$/.test(String(ex.reps || '').trim()); }
+function formatWeight(w){
+  const s = String(w || '').trim();
+  if(!s || s === 'Skriv inn vekt' || /kg\b/i.test(s)) return s;
+  return s + ' kg';
+}
 function findRecentActual(dayIdx, name, fromIdx){
   for(let i = fromIdx; i < WEEKS.length; i++){
     const wk = WEEKS[i];
@@ -428,7 +433,7 @@ function renderWeek(){
       const wt = document.createElement('div');
       const isPlaceholder = ex.weight === 'Skriv inn vekt';
       wt.className = 'wt' + (isPlaceholder ? ' placeholder' : '');
-      wt.textContent = ex.weight || '';
+      wt.textContent = formatWeight(ex.weight);
       const chev = document.createElement('svg');
       chev.setAttribute('viewBox', '0 0 16 16');
       chev.setAttribute('fill', 'none');
@@ -457,7 +462,7 @@ function renderWeek(){
           const prev = document.createElement('div');
           prev.className = 'prev';
           const label = (found.week === prevWeek) ? 'Sist gjort' : ('Sist gjort (' + shortLabel(found.week) + ')');
-          prev.textContent = label + ': ' + (found.ex.actualSets || '—') + '×' + (found.ex.actualReps || '—') + ' · ' + (found.ex.actualWeight || '—');
+          prev.textContent = label + ': ' + (found.ex.actualSets || '—') + '×' + (found.ex.actualReps || '—') + ' · ' + (found.ex.actualWeight ? formatWeight(found.ex.actualWeight) : '—');
           details.appendChild(prev);
           hasDetails = true;
         }
@@ -465,7 +470,7 @@ function renderWeek(){
       if(ex.actualSets || ex.actualReps || ex.actualWeight){
         const logged = document.createElement('div');
         logged.className = 'logged';
-        logged.innerHTML = '<svg viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Rapportert: ' + (ex.actualSets||'—') + ' sett × ' + (ex.actualReps||'—') + ' reps · ' + (ex.actualWeight||'—');
+        logged.innerHTML = '<svg viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Rapportert: ' + (ex.actualSets||'—') + ' sett × ' + (ex.actualReps||'—') + ' reps · ' + (ex.actualWeight ? formatWeight(ex.actualWeight) : '—');
         details.appendChild(logged);
         hasDetails = true;
       }
@@ -499,7 +504,7 @@ function renderWeek(){
         repsInput.value = ex.actualReps || ex.reps || '';
         repsLabel.appendChild(repsInput);
         const wtLabel = document.createElement('label');
-        wtLabel.textContent = 'Vekt';
+        wtLabel.textContent = 'Vekt (kg)';
         const wtInput = document.createElement('input');
         wtInput.type = 'text';
         wtInput.value = ex.actualWeight || (isPlaceholder ? '' : ex.weight) || '';
