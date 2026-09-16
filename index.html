@@ -119,6 +119,13 @@ h1{font-family:'Oswald',sans-serif;font-weight:600;font-size:clamp(26px,7vw,34px
 }
 .log-fields label{font-size:11px;color:var(--ink-muted);display:flex;flex-direction:column;gap:3px;}
 .log-hint{font-size:11px;color:var(--ink-muted);}
+.log-comment-label{font-size:11px;color:var(--ink-muted);display:flex;flex-direction:column;gap:3px;}
+.log-comment-label textarea{
+  width:100%;border:0.5px solid var(--border);background:var(--surface);color:var(--ink);
+  border-radius:8px;padding:6px 8px;font-family:'Work Sans',sans-serif;font-size:13px;resize:vertical;
+}
+.comment{font-size:12px;color:var(--ink-muted);padding:0 0 4px;margin-top:-4px;}
+.comment i{font-style:normal;color:var(--ink);font-weight:500;}
 
 .auth{display:flex;align-items:center;gap:8px;}
 .auth-btn{
@@ -200,9 +207,15 @@ function saveTracking(){ try { localStorage.setItem(TRACK_KEY, JSON.stringify(tr
 function shortLabel(w){ return 'B' + w.block + '·U' + w.week; }
 function dateBadge(title){ const m = title.match(/(\d{1,2}\.\d{2})/); return m ? m[1] : ''; }
 function isAccessory(ex){ return !/^\d+$/.test(String(ex.reps || '').trim()); }
-function findPrevExercise(prevWeek, dayIdx, name){
-  if(!prevWeek || !prevWeek.days[dayIdx]) return null;
-  return prevWeek.days[dayIdx].exercises.find(e=>e.name===name) || null;
+function findRecentActual(dayIdx, name, fromIdx){
+  for(let i = fromIdx; i < WEEKS.length; i++){
+    const wk = WEEKS[i];
+    const day = wk.days[dayIdx];
+    if(!day) continue;
+    const ex = day.exercises.find(e=>e.name===name);
+    if(ex && (ex.actualSets || ex.actualReps || ex.actualWeight)) return {week: wk, ex};
+  }
+  return null;
 }
 function weekDoneCount(w){ return w.days.reduce((n,_,di)=> n + (isDone(w.gid,di)?1:0), 0); }
 
@@ -419,17 +432,12 @@ function renderWeek(){
         list.appendChild(note);
       }
       if(isAccessory(ex)){
-        const prevEx = findPrevExercise(prevWeek, di, ex.name);
-        if(prevEx){
-          const hasActual = prevEx.actualSets || prevEx.actualReps || prevEx.actualWeight;
+        const found = findRecentActual(di, ex.name, selectedIdx + 1);
+        if(found){
           const prev = document.createElement('div');
           prev.className = 'prev';
-          if(hasActual){
-            prev.textContent = 'Sist gjort: ' + (prevEx.actualSets || prevEx.sets) + '×' + (prevEx.actualReps || '—') + ' · ' + (prevEx.actualWeight || '—');
-          } else {
-            const prevWt = prevEx.weight === 'Skriv inn vekt' ? '—' : (prevEx.weight || '—');
-            prev.textContent = 'Forrige uke foreslo: ' + prevEx.sets + '×' + prevEx.reps + ' · ' + prevWt;
-          }
+          const label = (found.week === prevWeek) ? 'Sist gjort' : ('Sist gjort (' + shortLabel(found.week) + ')');
+          prev.textContent = label + ': ' + (found.ex.actualSets || '—') + '×' + (found.ex.actualReps || '—') + ' · ' + (found.ex.actualWeight || '—');
           list.appendChild(prev);
         }
       }
@@ -438,6 +446,15 @@ function renderWeek(){
         logged.className = 'logged';
         logged.innerHTML = '<svg viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Rapportert: ' + (ex.actualSets||'—') + ' sett × ' + (ex.actualReps||'—') + ' reps · ' + (ex.actualWeight||'—');
         list.appendChild(logged);
+      }
+      if(ex.comment && expandedEx !== exKey){
+        const cm = document.createElement('div');
+        cm.className = 'comment';
+        const cmLabel = document.createElement('i');
+        cmLabel.textContent = 'Din kommentar:';
+        cm.appendChild(cmLabel);
+        cm.appendChild(document.createTextNode(' ' + ex.comment));
+        list.appendChild(cm);
       }
       if(expandedEx === exKey){
         const panel = document.createElement('div');
@@ -466,6 +483,14 @@ function renderWeek(){
         fields.appendChild(repsLabel);
         fields.appendChild(wtLabel);
 
+        const cmLabel = document.createElement('label');
+        cmLabel.className = 'log-comment-label';
+        cmLabel.textContent = 'Kommentar til trener';
+        const cmInput = document.createElement('textarea');
+        cmInput.rows = 2;
+        cmInput.value = ex.comment || '';
+        cmLabel.appendChild(cmInput);
+
         const actions = document.createElement('div');
         actions.className = 'log-actions';
         const saveBtn = document.createElement('button');
@@ -476,7 +501,7 @@ function renderWeek(){
           saveBtn.textContent = 'Lagrer…';
           saveBtn.disabled = true;
           try{
-            await writeActual(w, ex, setsInput.value, repsInput.value, wtInput.value);
+            await writeActual(w, ex, setsInput.value, repsInput.value, wtInput.value, cmInput.value);
             expandedEx = null;
             renderWeek();
           } catch(err){
@@ -499,6 +524,7 @@ function renderWeek(){
 
         panel.appendChild(hint);
         panel.appendChild(fields);
+        panel.appendChild(cmLabel);
         panel.appendChild(actions);
         panel.addEventListener('click', (e)=> e.stopPropagation());
         list.appendChild(panel);
@@ -538,9 +564,9 @@ function toggleDay(gid, di){
   renderAll();
 }
 
-async function writeActual(week, ex, sets, reps, weight){
+async function writeActual(week, ex, sets, reps, weight, comment){
   await ensureAuth();
-  const range = encodeURIComponent("'" + week.title.replace(/'/g,"''") + "'!M" + ex.row + ":O" + ex.row);
+  const range = encodeURIComponent("'" + week.title.replace(/'/g,"''") + "'!M" + ex.row + ":P" + ex.row);
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?valueInputOption=USER_ENTERED`;
   const res = await fetch(url, {
     method: 'PUT',
@@ -548,7 +574,7 @@ async function writeActual(week, ex, sets, reps, weight){
       'Authorization': 'Bearer ' + accessToken,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({values: [[sets, reps, weight]]})
+    body: JSON.stringify({values: [[sets, reps, weight, comment]]})
   });
   if(!res.ok){
     if(res.status === 401) clearAuth(false);
@@ -559,6 +585,7 @@ async function writeActual(week, ex, sets, reps, weight){
   ex.actualSets = sets;
   ex.actualReps = reps;
   ex.actualWeight = weight;
+  ex.comment = comment;
 }
 
 async function fetchJSON(url){
@@ -573,7 +600,7 @@ async function fetchJSON(url){
 
 function encodeRange(title){
   const escaped = title.replace(/'/g, "''");
-  return encodeURIComponent("'" + escaped + "'!A1:O100");
+  return encodeURIComponent("'" + escaped + "'!A1:P100");
 }
 
 function parseWeek(tabMeta, values){
@@ -599,6 +626,7 @@ function parseWeek(tabMeta, values){
     if(row[12]) ex.actualSets = row[12];
     if(row[13]) ex.actualReps = row[13];
     if(row[14]) ex.actualWeight = row[14];
+    if(row[15]) ex.comment = row[15];
     current.exercises.push(ex);
   });
   return {gid: String(tabMeta.sheetId), title: tabMeta.title, block, week, days};
