@@ -355,10 +355,10 @@ function renderWeek(){
         note.textContent = ex.note;
         list.appendChild(note);
       }
-      if(ex.actualReps || ex.actualWeight){
+      if(ex.actualSets || ex.actualReps || ex.actualWeight){
         const logged = document.createElement('div');
         logged.className = 'logged';
-        logged.innerHTML = '<svg viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Rapportert: ' + (ex.actualReps||'—') + ' reps · ' + (ex.actualWeight||'—');
+        logged.innerHTML = '<svg viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Rapportert: ' + (ex.actualSets||'—') + ' sett × ' + (ex.actualReps||'—') + ' reps · ' + (ex.actualWeight||'—');
         list.appendChild(logged);
       }
       if(expandedEx === exKey){
@@ -366,6 +366,12 @@ function renderWeek(){
         panel.className = 'log-panel';
         const fields = document.createElement('div');
         fields.className = 'log-fields';
+        const setsLabel = document.createElement('label');
+        setsLabel.textContent = 'Sett';
+        const setsInput = document.createElement('input');
+        setsInput.type = 'text';
+        setsInput.value = ex.actualSets || ex.sets || '';
+        setsLabel.appendChild(setsInput);
         const repsLabel = document.createElement('label');
         repsLabel.textContent = 'Reps';
         const repsInput = document.createElement('input');
@@ -378,6 +384,7 @@ function renderWeek(){
         wtInput.type = 'text';
         wtInput.value = ex.actualWeight || (isPlaceholder ? '' : ex.weight) || '';
         wtLabel.appendChild(wtInput);
+        fields.appendChild(setsLabel);
         fields.appendChild(repsLabel);
         fields.appendChild(wtLabel);
 
@@ -391,7 +398,7 @@ function renderWeek(){
           saveBtn.textContent = 'Lagrer…';
           saveBtn.disabled = true;
           try{
-            await writeActual(w, ex, repsInput.value, wtInput.value);
+            await writeActual(w, ex, setsInput.value, repsInput.value, wtInput.value);
             expandedEx = null;
             renderWeek();
           } catch(err){
@@ -453,9 +460,9 @@ function toggleDay(gid, di){
   renderAll();
 }
 
-async function writeActual(week, ex, reps, weight){
+async function writeActual(week, ex, sets, reps, weight){
   await ensureAuth();
-  const range = encodeURIComponent("'" + week.title.replace(/'/g,"''") + "'!M" + ex.row + ":N" + ex.row);
+  const range = encodeURIComponent("'" + week.title.replace(/'/g,"''") + "'!M" + ex.row + ":O" + ex.row);
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?valueInputOption=USER_ENTERED`;
   const res = await fetch(url, {
     method: 'PUT',
@@ -463,13 +470,14 @@ async function writeActual(week, ex, reps, weight){
       'Authorization': 'Bearer ' + accessToken,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({values: [[reps, weight]]})
+    body: JSON.stringify({values: [[sets, reps, weight]]})
   });
   if(!res.ok){
     let msg = 'HTTP ' + res.status;
     try { const body = await res.json(); if(body?.error?.message) msg = body.error.message; } catch(e){}
     throw new Error(msg);
   }
+  ex.actualSets = sets;
   ex.actualReps = reps;
   ex.actualWeight = weight;
 }
@@ -486,7 +494,7 @@ async function fetchJSON(url){
 
 function encodeRange(title){
   const escaped = title.replace(/'/g, "''");
-  return encodeURIComponent("'" + escaped + "'!A1:N100");
+  return encodeURIComponent("'" + escaped + "'!A1:O100");
 }
 
 function parseWeek(tabMeta, values){
@@ -509,8 +517,9 @@ function parseWeek(tabMeta, values){
     if(!name) return;
     const ex = {name, sets: row[4] || '', reps: row[5] || '', weight: row[7] || '', row: i + 1};
     if(row[8]) ex.note = row[8];
-    if(row[12]) ex.actualReps = row[12];
-    if(row[13]) ex.actualWeight = row[13];
+    if(row[12]) ex.actualSets = row[12];
+    if(row[13]) ex.actualReps = row[13];
+    if(row[14]) ex.actualWeight = row[14];
     current.exercises.push(ex);
   });
   return {gid: String(tabMeta.sheetId), title: tabMeta.title, block, week, days};
