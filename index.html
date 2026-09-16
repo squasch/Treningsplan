@@ -12,6 +12,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=Work+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 :root{
   --bg:#EEF0F1; --surface:#FFFFFF; --surface-2:#E3E7E9;
@@ -101,7 +102,30 @@ h1{font-family:'Oswald',sans-serif;font-weight:600;font-size:clamp(26px,7vw,34px
 .ex .sxr{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13px;color:var(--ink-muted);white-space:nowrap;}
 .ex .wt{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13.5px;font-weight:600;min-width:64px;text-align:right;white-space:nowrap;}
 .ex .wt.placeholder{font-weight:400;font-style:italic;color:var(--ink-muted);font-size:12px;}
+.ex{cursor:pointer;}
 .note{font-size:12px;color:var(--ink-muted);font-style:italic;padding:0 0 4px;margin-top:-4px;}
+
+.logged{font-size:12px;color:var(--success-ink);background:var(--success-bg);border-radius:8px;padding:4px 8px;margin:0 0 4px;display:inline-flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;}
+.logged svg{width:11px;height:11px;flex:0 0 auto;}
+.log-panel{background:var(--surface-2);border-radius:10px;padding:10px;margin:0 0 4px;display:flex;flex-direction:column;gap:8px;}
+.log-actions{display:flex;gap:8px;flex-wrap:wrap;}
+.log-btn{border:0.5px solid var(--border);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;font-family:'Work Sans',sans-serif;cursor:pointer;}
+.log-btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);}
+.log-fields{display:flex;gap:8px;align-items:center;}
+.log-fields input{
+  width:64px;border:0.5px solid var(--border);background:var(--surface);color:var(--ink);
+  border-radius:8px;padding:6px 8px;font-family:'JetBrains Mono',monospace;font-size:13px;font-variant-numeric:tabular-nums;
+}
+.log-fields label{font-size:11px;color:var(--ink-muted);display:flex;flex-direction:column;gap:3px;}
+.log-hint{font-size:11px;color:var(--ink-muted);}
+
+.auth{display:flex;align-items:center;gap:8px;}
+.auth-btn{
+  border:0.5px solid var(--border);background:var(--surface);color:var(--ink-muted);
+  border-radius:999px;padding:5px 12px;font-size:11px;font-family:'JetBrains Mono',monospace;font-weight:600;cursor:pointer;
+}
+.auth-on{font-size:11px;color:var(--success-ink);font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:5px;}
+.auth-on button{border:none;background:none;color:var(--ink-muted);text-decoration:underline;cursor:pointer;font-size:11px;font-family:'Work Sans',sans-serif;padding:0;}
 
 .empty{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:2rem 1.2rem;text-align:center;color:var(--ink-muted);font-size:13.5px;}
 
@@ -115,10 +139,13 @@ footer{margin-top:2.5rem;font-size:12px;color:var(--ink-muted);border-top:0.5px 
   <header class="top">
     <div class="eyebrow-row">
       <div class="eyebrow" id="blockLabel">Blokk · Uke</div>
-      <button class="refresh" id="refreshBtn" aria-label="Hent på nytt">
-        <svg viewBox="0 0 16 16" fill="none"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2v3.5H10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Oppdater
-      </button>
+      <div class="auth">
+        <span id="authArea"><button class="auth-btn" id="signInBtn">Logg inn med Google</button></span>
+        <button class="refresh" id="refreshBtn" aria-label="Hent på nytt">
+          <svg viewBox="0 0 16 16" fill="none"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2v3.5H10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Oppdater
+        </button>
+      </div>
     </div>
     <h1>Styrkeplan Mathias</h1>
     <p class="sub" id="weekDate">—</p>
@@ -139,12 +166,13 @@ footer{margin-top:2.5rem;font-size:12px;color:var(--ink-muted);border-top:0.5px 
 
   <div class="days" id="days"><div class="empty">Henter treningsplan…</div></div>
 
-  <footer>Henter live fra Google Sheets ved hver åpning. Avkrysning lagres kun på denne enheten. <span id="cacheNote"></span></footer>
+  <footer>Henter live fra Google Sheets ved hver åpning. Dagsavkrysning lagres kun på denne enheten; rapportert vekt/reps per øvelse skrives til arket (krever innlogging). <span id="cacheNote"></span></footer>
 </div>
 
 <script>
 const SHEET_ID = '1dachUYIF2fl2WUWxoN5fXoBttnaY5Wt2qk5LWBYA3J4';
-const API_KEY = 'AIzaSyBqbl0Man90jEanEYayUo89IkaraxtEBBg';
+const API_KEY = 'AIzaSyBKeMr9qvlL845XFooV_A6gaTE-61taDzc';
+const OAUTH_CLIENT_ID = '627760272879-faahr1r1j11uphdc512pgnsjv1lhtv10.apps.googleusercontent.com';
 const MAX_WEEKS = 10;
 const TRACK_KEY = 'styrkeplan_tracking_v1';
 const CACHE_KEY = 'styrkeplan_weeks_cache_v1';
@@ -155,6 +183,11 @@ let selectedIdx = 0;
 let tracking = {};
 try { tracking = JSON.parse(localStorage.getItem(TRACK_KEY) || '{}'); } catch(e) { tracking = {}; }
 let lastFetchedAt = null;
+
+let tokenClient = null;
+let accessToken = null;
+let tokenExpiresAt = 0;
+let expandedEx = null;
 
 function dayId(gid, di){ return gid + '_d' + di; }
 function isDone(gid, di){ return !!(tracking[dayId(gid,di)] && tracking[dayId(gid,di)].done); }
@@ -181,6 +214,59 @@ function setStatus(text, isErr){
   const el = document.getElementById('statusLine');
   el.textContent = text || '';
   el.className = 'status' + (isErr ? ' err' : '');
+}
+
+function isSignedIn(){ return !!accessToken && Date.now() < tokenExpiresAt; }
+
+function renderAuthArea(){
+  const el = document.getElementById('authArea');
+  if(isSignedIn()){
+    el.innerHTML = '';
+    const span = document.createElement('span');
+    span.className = 'auth-on';
+    span.innerHTML = '<svg viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Pålogget';
+    const out = document.createElement('button');
+    out.textContent = 'Logg ut';
+    out.addEventListener('click', signOut);
+    span.appendChild(document.createTextNode(' '));
+    span.appendChild(out);
+    el.appendChild(span);
+  } else {
+    el.innerHTML = '<button class="auth-btn" id="signInBtn">Logg inn med Google</button>';
+    document.getElementById('signInBtn').addEventListener('click', ()=> ensureAuth().catch(()=>{}));
+  }
+}
+
+function initAuth(){
+  if(!window.google || OAUTH_CLIENT_ID.startsWith('REPLACE_WITH')) return;
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: OAUTH_CLIENT_ID,
+    scope: 'https://www.googleapis.com/auth/spreadsheets',
+    callback: () => {}
+  });
+}
+
+function ensureAuth(){
+  return new Promise((resolve, reject)=>{
+    if(isSignedIn()) return resolve(accessToken);
+    if(!tokenClient) initAuth();
+    if(!tokenClient){ setStatus('Google-innlogging er ikke satt opp ennå.', true); return reject(new Error('no token client')); }
+    tokenClient.callback = (resp)=>{
+      if(resp.error){ setStatus('Innlogging feilet: ' + resp.error, true); reject(resp); return; }
+      accessToken = resp.access_token;
+      tokenExpiresAt = Date.now() + (Number(resp.expires_in || 3600) * 1000) - 30000;
+      renderAuthArea();
+      resolve(accessToken);
+    };
+    tokenClient.requestAccessToken({prompt: isSignedIn() ? '' : 'consent'});
+  });
+}
+
+function signOut(){
+  if(accessToken && window.google) google.accounts.oauth2.revoke(accessToken, ()=>{});
+  accessToken = null;
+  tokenExpiresAt = 0;
+  renderAuthArea();
 }
 
 function renderTicker(){
@@ -244,7 +330,8 @@ function renderWeek(){
 
     const list = document.createElement('div');
     list.className = 'ex-list';
-    d.exercises.forEach(ex=>{
+    d.exercises.forEach((ex, ei)=>{
+      const exKey = w.gid + '_d' + di + '_e' + ei;
       const row = document.createElement('div');
       row.className = 'ex';
       const name = document.createElement('div');
@@ -260,12 +347,76 @@ function renderWeek(){
       row.appendChild(name);
       row.appendChild(sxr);
       row.appendChild(wt);
+      row.addEventListener('click', ()=>{ expandedEx = (expandedEx === exKey ? null : exKey); renderWeek(); });
       list.appendChild(row);
       if(ex.note){
         const note = document.createElement('div');
         note.className = 'note';
         note.textContent = ex.note;
         list.appendChild(note);
+      }
+      if(ex.actualReps || ex.actualWeight){
+        const logged = document.createElement('div');
+        logged.className = 'logged';
+        logged.innerHTML = '<svg viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Rapportert: ' + (ex.actualReps||'—') + ' reps · ' + (ex.actualWeight||'—');
+        list.appendChild(logged);
+      }
+      if(expandedEx === exKey){
+        const panel = document.createElement('div');
+        panel.className = 'log-panel';
+        const fields = document.createElement('div');
+        fields.className = 'log-fields';
+        const repsLabel = document.createElement('label');
+        repsLabel.textContent = 'Reps';
+        const repsInput = document.createElement('input');
+        repsInput.type = 'text';
+        repsInput.value = ex.actualReps || ex.reps || '';
+        repsLabel.appendChild(repsInput);
+        const wtLabel = document.createElement('label');
+        wtLabel.textContent = 'Vekt';
+        const wtInput = document.createElement('input');
+        wtInput.type = 'text';
+        wtInput.value = ex.actualWeight || (isPlaceholder ? '' : ex.weight) || '';
+        wtLabel.appendChild(wtInput);
+        fields.appendChild(repsLabel);
+        fields.appendChild(wtLabel);
+
+        const actions = document.createElement('div');
+        actions.className = 'log-actions';
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'log-btn primary';
+        saveBtn.textContent = 'Lagre';
+        saveBtn.addEventListener('click', async (e)=>{
+          e.stopPropagation();
+          saveBtn.textContent = 'Lagrer…';
+          saveBtn.disabled = true;
+          try{
+            await writeActual(w, ex, repsInput.value, wtInput.value);
+            expandedEx = null;
+            renderWeek();
+          } catch(err){
+            const msg = err.message === 'no token client' ? 'pålogging med Google er ikke satt opp ennå' : err.message;
+            setStatus('Kunne ikke lagre: ' + msg, true);
+            saveBtn.textContent = 'Lagre';
+            saveBtn.disabled = false;
+          }
+        });
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'log-btn';
+        cancelBtn.textContent = 'Avbryt';
+        cancelBtn.addEventListener('click', (e)=>{ e.stopPropagation(); expandedEx = null; renderWeek(); });
+        actions.appendChild(saveBtn);
+        actions.appendChild(cancelBtn);
+
+        const hint = document.createElement('div');
+        hint.className = 'log-hint';
+        hint.textContent = isSignedIn() ? 'Felt fylt inn med foreslått verdi — endre ved behov, eller lagre som den er.' : 'Du blir bedt om å logge inn med Google når du trykker Lagre.';
+
+        panel.appendChild(hint);
+        panel.appendChild(fields);
+        panel.appendChild(actions);
+        panel.addEventListener('click', (e)=> e.stopPropagation());
+        list.appendChild(panel);
       }
     });
     card.appendChild(list);
@@ -302,6 +453,27 @@ function toggleDay(gid, di){
   renderAll();
 }
 
+async function writeActual(week, ex, reps, weight){
+  await ensureAuth();
+  const range = encodeURIComponent("'" + week.title.replace(/'/g,"''") + "'!M" + ex.row + ":N" + ex.row);
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?valueInputOption=USER_ENTERED`;
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Authorization': 'Bearer ' + accessToken,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({values: [[reps, weight]]})
+  });
+  if(!res.ok){
+    let msg = 'HTTP ' + res.status;
+    try { const body = await res.json(); if(body?.error?.message) msg = body.error.message; } catch(e){}
+    throw new Error(msg);
+  }
+  ex.actualReps = reps;
+  ex.actualWeight = weight;
+}
+
 async function fetchJSON(url){
   const res = await fetch(url);
   if(!res.ok){
@@ -314,7 +486,7 @@ async function fetchJSON(url){
 
 function encodeRange(title){
   const escaped = title.replace(/'/g, "''");
-  return encodeURIComponent("'" + escaped + "'!A1:K100");
+  return encodeURIComponent("'" + escaped + "'!A1:N100");
 }
 
 function parseWeek(tabMeta, values){
@@ -325,20 +497,22 @@ function parseWeek(tabMeta, values){
 
   const days = [];
   let current = null;
-  for(const row of values){
+  values.forEach((row, i)=>{
     const a = (row[0] || '').toString();
     if(/^Dag\s*\d+/i.test(a)){
       current = {title: a, exercises: []};
       days.push(current);
-      continue;
+      return;
     }
-    if(!current) continue;
+    if(!current) return;
     const name = row[2];
-    if(!name) continue;
-    const ex = {name, sets: row[4] || '', reps: row[5] || '', weight: row[7] || ''};
+    if(!name) return;
+    const ex = {name, sets: row[4] || '', reps: row[5] || '', weight: row[7] || '', row: i + 1};
     if(row[8]) ex.note = row[8];
+    if(row[12]) ex.actualReps = row[12];
+    if(row[13]) ex.actualWeight = row[13];
     current.exercises.push(ex);
-  }
+  });
   return {gid: String(tabMeta.sheetId), title: tabMeta.title, block, week, days};
 }
 
@@ -400,11 +574,14 @@ async function loadFromSheet(){
 }
 
 document.getElementById('refreshBtn').addEventListener('click', loadFromSheet);
+document.getElementById('signInBtn').addEventListener('click', ()=> ensureAuth().catch(()=>{}));
 document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState === 'visible' && lastFetchedAt && (Date.now() - lastFetchedAt.getTime() > STALE_MS)){
     loadFromSheet();
   }
 });
+
+window.addEventListener('load', initAuth);
 
 if(loadFromCache()) renderAll();
 loadFromSheet();
