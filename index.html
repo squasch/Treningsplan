@@ -96,17 +96,22 @@ h1{font-family:'Oswald',sans-serif;font-weight:600;font-size:clamp(26px,7vw,34px
 .toggle.on{background:var(--success-bg);color:var(--success-ink);border-color:var(--success);}
 
 .ex-list{display:flex;flex-direction:column;}
-.ex{display:flex;align-items:baseline;gap:10px;padding:6px 0;border-top:0.5px solid var(--border);}
-.ex:first-child{border-top:none;}
-.ex .name{flex:1 1 auto;font-size:13.5px;line-height:1.35;}
+.ex-item{border-top:0.5px solid var(--border);}
+.ex-item:first-child{border-top:none;}
+.ex{display:flex;align-items:center;gap:8px;padding:9px 6px;margin:0 -6px;border-radius:8px;cursor:pointer;transition:background .12s;}
+.ex:hover{background:var(--surface-2);}
+.ex.expanded{background:var(--surface-2);}
+.ex .name{flex:1 1 auto;font-size:14px;font-weight:500;line-height:1.3;color:var(--ink);}
 .ex .sxr{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13px;color:var(--ink-muted);white-space:nowrap;}
-.ex .wt{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13.5px;font-weight:600;min-width:64px;text-align:right;white-space:nowrap;}
+.ex .wt{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13.5px;font-weight:600;min-width:60px;text-align:right;white-space:nowrap;}
 .ex .wt.placeholder{font-weight:400;font-style:italic;color:var(--ink-muted);font-size:12px;}
-.ex{cursor:pointer;}
-.note{font-size:12px;color:var(--ink-muted);font-style:italic;padding:0 0 4px;margin-top:-4px;}
-.prev{font-size:11.5px;color:var(--accent);font-family:'JetBrains Mono',monospace;padding:0 0 4px;margin-top:-4px;font-variant-numeric:tabular-nums;}
+.chev{flex:0 0 auto;width:14px;height:14px;color:var(--ink-muted);transition:transform .15s;}
+.chev.open{transform:rotate(180deg);color:var(--accent);}
+.ex-details{display:flex;flex-direction:column;gap:3px;padding:1px 0 9px 10px;margin:0 0 0 9px;border-left:2px solid var(--border);}
+.note{font-size:12px;color:var(--ink-muted);font-style:italic;}
+.prev{font-size:11.5px;color:var(--accent);font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;}
 
-.logged{font-size:12px;color:var(--success-ink);background:var(--success-bg);border-radius:8px;padding:4px 8px;margin:0 0 4px;display:inline-flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;}
+.logged{font-size:12px;color:var(--success-ink);background:var(--success-bg);border-radius:8px;padding:4px 8px;display:inline-flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;width:fit-content;}
 .logged svg{width:11px;height:11px;flex:0 0 auto;}
 .log-panel{background:var(--surface-2);border-radius:10px;padding:10px;margin:0 0 4px;display:flex;flex-direction:column;gap:8px;}
 .log-actions{display:flex;gap:8px;flex-wrap:wrap;}
@@ -124,7 +129,7 @@ h1{font-family:'Oswald',sans-serif;font-weight:600;font-size:clamp(26px,7vw,34px
   width:100%;border:0.5px solid var(--border);background:var(--surface);color:var(--ink);
   border-radius:8px;padding:6px 8px;font-family:'Work Sans',sans-serif;font-size:13px;resize:vertical;
 }
-.comment{font-size:12px;color:var(--ink-muted);padding:0 0 4px;margin-top:-4px;}
+.comment{font-size:12px;color:var(--ink-muted);}
 .comment i{font-style:normal;color:var(--ink);font-weight:500;}
 
 .auth{display:flex;align-items:center;gap:8px;}
@@ -408,8 +413,12 @@ function renderWeek(){
     list.className = 'ex-list';
     d.exercises.forEach((ex, ei)=>{
       const exKey = w.gid + '_d' + di + '_e' + ei;
+      const isExpanded = expandedEx === exKey;
+      const exItem = document.createElement('div');
+      exItem.className = 'ex-item';
+
       const row = document.createElement('div');
-      row.className = 'ex';
+      row.className = 'ex' + (isExpanded ? ' expanded' : '');
       const name = document.createElement('div');
       name.className = 'name';
       name.textContent = ex.name;
@@ -420,16 +429,27 @@ function renderWeek(){
       const isPlaceholder = ex.weight === 'Skriv inn vekt';
       wt.className = 'wt' + (isPlaceholder ? ' placeholder' : '');
       wt.textContent = ex.weight || '';
+      const chev = document.createElement('svg');
+      chev.setAttribute('viewBox', '0 0 16 16');
+      chev.setAttribute('fill', 'none');
+      chev.className = 'chev' + (isExpanded ? ' open' : '');
+      chev.innerHTML = '<path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>';
       row.appendChild(name);
       row.appendChild(sxr);
       row.appendChild(wt);
+      row.appendChild(chev);
       row.addEventListener('click', ()=>{ expandedEx = (expandedEx === exKey ? null : exKey); renderWeek(); });
-      list.appendChild(row);
+      exItem.appendChild(row);
+
+      const details = document.createElement('div');
+      details.className = 'ex-details';
+      let hasDetails = false;
       if(ex.note){
         const note = document.createElement('div');
         note.className = 'note';
         note.textContent = ex.note;
-        list.appendChild(note);
+        details.appendChild(note);
+        hasDetails = true;
       }
       if(isAccessory(ex)){
         const found = findRecentActual(di, ex.name, selectedIdx + 1);
@@ -438,25 +458,30 @@ function renderWeek(){
           prev.className = 'prev';
           const label = (found.week === prevWeek) ? 'Sist gjort' : ('Sist gjort (' + shortLabel(found.week) + ')');
           prev.textContent = label + ': ' + (found.ex.actualSets || '—') + '×' + (found.ex.actualReps || '—') + ' · ' + (found.ex.actualWeight || '—');
-          list.appendChild(prev);
+          details.appendChild(prev);
+          hasDetails = true;
         }
       }
       if(ex.actualSets || ex.actualReps || ex.actualWeight){
         const logged = document.createElement('div');
         logged.className = 'logged';
         logged.innerHTML = '<svg viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Rapportert: ' + (ex.actualSets||'—') + ' sett × ' + (ex.actualReps||'—') + ' reps · ' + (ex.actualWeight||'—');
-        list.appendChild(logged);
+        details.appendChild(logged);
+        hasDetails = true;
       }
-      if(ex.comment && expandedEx !== exKey){
+      if(ex.comment && !isExpanded){
         const cm = document.createElement('div');
         cm.className = 'comment';
         const cmLabel = document.createElement('i');
         cmLabel.textContent = 'Din kommentar:';
         cm.appendChild(cmLabel);
         cm.appendChild(document.createTextNode(' ' + ex.comment));
-        list.appendChild(cm);
+        details.appendChild(cm);
+        hasDetails = true;
       }
-      if(expandedEx === exKey){
+      if(hasDetails) exItem.appendChild(details);
+
+      if(isExpanded){
         const panel = document.createElement('div');
         panel.className = 'log-panel';
         const fields = document.createElement('div');
@@ -527,8 +552,9 @@ function renderWeek(){
         panel.appendChild(cmLabel);
         panel.appendChild(actions);
         panel.addEventListener('click', (e)=> e.stopPropagation());
-        list.appendChild(panel);
+        exItem.appendChild(panel);
       }
+      list.appendChild(exItem);
     });
     card.appendChild(list);
     days.appendChild(card);
