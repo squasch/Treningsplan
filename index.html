@@ -176,6 +176,7 @@ const OAUTH_CLIENT_ID = '627760272879-faahr1r1j11uphdc512pgnsjv1lhtv10.apps.goog
 const MAX_WEEKS = 10;
 const TRACK_KEY = 'styrkeplan_tracking_v1';
 const CACHE_KEY = 'styrkeplan_weeks_cache_v1';
+const AUTH_KEY = 'styrkeplan_auth_v1';
 const STALE_MS = 5 * 60 * 1000;
 
 let WEEKS = [];
@@ -187,7 +188,9 @@ let lastFetchedAt = null;
 let tokenClient = null;
 let accessToken = null;
 let tokenExpiresAt = 0;
+let hasConsented = false;
 let expandedEx = null;
+loadAuth();
 
 function dayId(gid, di){ return gid + '_d' + di; }
 function isDone(gid, di){ return !!(tracking[dayId(gid,di)] && tracking[dayId(gid,di)].done); }
@@ -218,6 +221,30 @@ function setStatus(text, isErr){
 
 function isSignedIn(){ return !!accessToken && Date.now() < tokenExpiresAt; }
 
+function loadAuth(){
+  try{
+    const raw = localStorage.getItem(AUTH_KEY);
+    if(!raw) return;
+    const parsed = JSON.parse(raw);
+    hasConsented = !!parsed.hasConsented;
+    if(parsed.accessToken && parsed.tokenExpiresAt && Date.now() < parsed.tokenExpiresAt){
+      accessToken = parsed.accessToken;
+      tokenExpiresAt = parsed.tokenExpiresAt;
+    }
+  } catch(e) {}
+}
+
+function saveAuth(){
+  try{ localStorage.setItem(AUTH_KEY, JSON.stringify({accessToken, tokenExpiresAt, hasConsented})); } catch(e) {}
+}
+
+function clearAuth(forgetConsent){
+  accessToken = null;
+  tokenExpiresAt = 0;
+  if(forgetConsent) hasConsented = false;
+  saveAuth();
+}
+
 function renderAuthArea(){
   const el = document.getElementById('authArea');
   if(isSignedIn()){
@@ -237,8 +264,8 @@ function renderAuthArea(){
   }
 }
 
-function initAuth(){
-  if(!window.google || OAUTH_CLIENT_ID.startsWith('REPLACE_WITH')) return;
+function createTokenClient(){
+  if(tokenClient || !window.google || OAUTH_CLIENT_ID.startsWith('REPLACE_WITH')) return;
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: OAUTH_CLIENT_ID,
     scope: 'https://www.googleapis.com/auth/spreadsheets',
@@ -246,26 +273,55 @@ function initAuth(){
   });
 }
 
+function initAuth(){
+  createTokenClient();
+  if(tokenClient && hasConsented && !isSignedIn()){
+    // best-effort silent refresh so reopening the app within an active Google session
+    // doesn't require a click — no visible prompt if it works, silently does nothing if not
+    tokenClient.callback = (resp)=>{
+      if(!resp.error){
+        accessToken = resp.access_token;
+        tokenExpiresAt = Date.now() + (Number(resp.expires_in || 3600) * 1000) - 30000;
+        saveAuth();
+        renderAuthArea();
+      }
+    };
+    tokenClient.requestAccessToken({prompt: ''});
+  }
+}
+
 function ensureAuth(){
   return new Promise((resolve, reject)=>{
     if(isSignedIn()) return resolve(accessToken);
-    if(!tokenClient) initAuth();
+    createTokenClient();
     if(!tokenClient){ setStatus('Google-innlogging er ikke satt opp ennå.', true); return reject(new Error('no token client')); }
+    const promptMode = hasConsented ? '' : 'consent';
     tokenClient.callback = (resp)=>{
-      if(resp.error){ setStatus('Innlogging feilet: ' + resp.error, true); reject(resp); return; }
+      if(resp.error){
+        if(promptMode === ''){
+          clearAuth(true);
+          setStatus('Tilgangen må fornyes — trykk «Logg inn med Google» én gang til.', true);
+        } else {
+          setStatus('Innlogging feilet: ' + resp.error, true);
+        }
+        renderAuthArea();
+        reject(resp);
+        return;
+      }
       accessToken = resp.access_token;
       tokenExpiresAt = Date.now() + (Number(resp.expires_in || 3600) * 1000) - 30000;
+      hasConsented = true;
+      saveAuth();
       renderAuthArea();
       resolve(accessToken);
     };
-    tokenClient.requestAccessToken({prompt: isSignedIn() ? '' : 'consent'});
+    tokenClient.requestAccessToken({prompt: promptMode});
   });
 }
 
 function signOut(){
   if(accessToken && window.google) google.accounts.oauth2.revoke(accessToken, ()=>{});
-  accessToken = null;
-  tokenExpiresAt = 0;
+  clearAuth(true);
   renderAuthArea();
 }
 
@@ -473,6 +529,7 @@ async function writeActual(week, ex, sets, reps, weight){
     body: JSON.stringify({values: [[sets, reps, weight]]})
   });
   if(!res.ok){
+    if(res.status === 401) clearAuth(false);
     let msg = 'HTTP ' + res.status;
     try { const body = await res.json(); if(body?.error?.message) msg = body.error.message; } catch(e){}
     throw new Error(msg);
@@ -590,6 +647,7 @@ document.addEventListener('visibilitychange', ()=>{
   }
 });
 
+renderAuthArea();
 window.addEventListener('load', initAuth);
 
 if(loadFromCache()) renderAll();
