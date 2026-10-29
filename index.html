@@ -152,8 +152,8 @@ footer{margin-top:2.5rem;font-size:12px;color:var(--ink-muted);border-top:0.5px 
 .st-sec{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:1rem 1.15rem;margin-bottom:14px;}
 .st-sec h3{font-family:'Oswald',sans-serif;font-size:16px;font-weight:600;margin:0 0 .2rem;}
 .st-sec .st-sub{font-size:12px;color:var(--ink-muted);margin:0 0 .8rem;}
-.bars{display:flex;align-items:flex-end;gap:6px;height:110px;}
-.bar-col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:4px;}
+.bars{display:flex;align-items:flex-end;gap:6px;height:110px;overflow-x:auto;}
+.bar-col{flex:1 1 0;min-width:38px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:4px;}
 .bar{width:100%;max-width:34px;background:var(--accent);border-radius:5px 5px 0 0;min-height:2px;}
 .bar.full{background:var(--success);}
 .bar-val{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-muted);font-variant-numeric:tabular-nums;}
@@ -222,7 +222,7 @@ body.locked .app{display:none;}
     <div class="stat-row">
       <div class="stat"><div class="n" id="statWeek">0/0</div><div class="l">denne uken</div></div>
       <div class="stat"><div class="n" id="statStreak">0</div><div class="l">økter på rad</div></div>
-      <div class="stat"><div class="n" id="statTotal">0/0</div><div class="l">siste uker</div></div>
+      <div class="stat"><div class="n" id="statTotal">0/0</div><div class="l">alle uker</div></div>
     </div>
   </header>
 
@@ -251,7 +251,6 @@ body.locked .app{display:none;}
 <script>
 const SHEET_ID = '1dachUYIF2fl2WUWxoN5fXoBttnaY5Wt2qk5LWBYA3J4';
 const OAUTH_CLIENT_ID = '627760272879-faahr1r1j11uphdc512pgnsjv1lhtv10.apps.googleusercontent.com';
-const MAX_WEEKS = 10;
 const TRACK_KEY = 'styrkeplan_tracking_v1';
 const CACHE_KEY = 'styrkeplan_weeks_cache_v1';
 const AUTH_KEY = 'styrkeplan_auth_v1';
@@ -282,12 +281,14 @@ function formatWeight(w){
   if(!s || s === 'Skriv inn vekt' || /kg\b/i.test(s)) return s;
   return s + ' kg';
 }
+// Treneren har stavet samme øvelse ulikt ("Konk bøy" / "Konkbøy"); sammenlign uten mellomrom og store/små bokstaver.
+function normName(n){ return String(n || '').toLowerCase().replace(/[\s\-_.]+/g, ''); }
 function findRecentActual(dayIdx, name, fromIdx){
   for(let i = fromIdx; i < WEEKS.length; i++){
     const wk = WEEKS[i];
     const day = wk.days[dayIdx];
     if(!day) continue;
-    const ex = day.exercises.find(e=>e.name===name);
+    const ex = day.exercises.find(e=> normName(e.name) === normName(name));
     if(ex && (ex.actualSets || ex.actualReps || ex.actualWeight)) return {week: wk, ex};
   }
   return null;
@@ -793,6 +794,7 @@ function renderStatsTab(){
   const perWeek = WEEKS.map(w=>({w, done: weekDoneCount(w), total: w.days.length, volume: 0}));
   const mainLifts = new Map();  // hovedøvelser (rene rep-tall)
   const accLifts = new Map();   // tilleggsøvelser (rapportert vekt)
+  const names = new Map();      // normalisert nøkkel → visningsnavn
   let totalReps = 0;
   chrono.forEach(w=>{
     const pw = perWeek[WEEKS.indexOf(w)];
@@ -803,8 +805,10 @@ function renderStatsTab(){
       const vol = p.sets * (p.reps || 1) * p.kg;
       pw.volume += vol;
       const map = acc ? accLifts : mainLifts;
-      if(!map.has(ex.name)) map.set(ex.name, []);
-      map.get(ex.name).push({kg: p.kg, sets: p.sets, reps: p.reps, vol, reported: p.reported, e: e1rm(p.kg, p.reps), week: w, day: di});
+      const key = normName(ex.name);
+      names.set(key, ex.name);  // eldst → nyest, så nyeste staving vinner
+      if(!map.has(key)) map.set(key, []);
+      map.get(key).push({kg: p.kg, sets: p.sets, reps: p.reps, vol, reported: p.reported, e: e1rm(p.kg, p.reps), week: w, day: di});
       if(!acc) totalReps += p.sets * p.reps;
     }));
   });
@@ -825,16 +829,17 @@ function renderStatsTab(){
     const secMain = mk('section', 'st-sec');
     secMain.appendChild(mk('h3', null, 'Hovedøvelser'));
     secMain.appendChild(mk('p', 'st-sub', 'Basert på rapportert vekt, eller planlagt vekt for avkryssede dager. Est. 1RM etter Epley.'));
-    Array.from(mainLifts.entries()).sort((a,b)=> b[1].length - a[1].length || a[0].localeCompare(b[0], 'nb')).forEach(([name, pts])=>{
+    Array.from(mainLifts.entries()).sort((a,b)=> b[1].length - a[1].length || names.get(a[0]).localeCompare(names.get(b[0]), 'nb')).forEach(([key, pts])=>{
+      const name = names.get(key);
       const card = mk('div', 'ml');
       const last = pts[pts.length - 1], first = pts[0];
       const head = mk('div', 'ml-head');
-      const open = openLifts.has(name);
+      const open = openLifts.has(key);
       const nameEl = mk('div', 'ml-name', name);
       nameEl.appendChild(mk('span', 'ml-chev' + (open ? ' open' : ''), '›'));
       head.appendChild(nameEl);
       head.addEventListener('click', ()=>{
-        if(openLifts.has(name)) openLifts.delete(name); else openLifts.add(name);
+        if(openLifts.has(key)) openLifts.delete(key); else openLifts.add(key);
         renderStatsTab();
       });
       const big = mk('div', 'ml-e');
@@ -935,13 +940,13 @@ function renderStatsTab(){
   const secLifts = mk('section', 'st-sec');
   secLifts.appendChild(mk('h3', null, 'Tilleggsøvelser'));
   secLifts.appendChild(mk('p', 'st-sub', 'Siste rapporterte vekt, tyngste vekt og utvikling over tid.'));
-  const rows = Array.from(lifts.entries()).sort((a,b)=> b[1].length - a[1].length || a[0].localeCompare(b[0], 'nb'));
+  const rows = Array.from(lifts.entries()).sort((a,b)=> b[1].length - a[1].length || names.get(a[0]).localeCompare(names.get(b[0]), 'nb'));
   if(rows.length === 0){
     secLifts.appendChild(mk('div', 'empty', 'Ingen rapporterte vekter ennå. Logg vekt på en øvelse i planen.'));
   }
-  rows.forEach(([name, pts])=>{
+  rows.forEach(([key, pts])=>{
     const row = mk('div', 'lift');
-    const nm = mk('div', 'nm', name);
+    const nm = mk('div', 'nm', names.get(key));
     const best = Math.max(...pts.map(p=>p.kg));
     let sub = 'Tyngste ' + fmtNum(best) + ' kg';
     sub += ' · ' + pts.length + (pts.length === 1 ? ' økt' : ' økter');
@@ -1145,7 +1150,7 @@ async function loadFromSheet(){
     appTabExists = meta.sheets.some(s=> s.properties.title === APP_TAB);
     const tabs = meta.sheets.map(s=>s.properties).filter(p=>/^B\d+\s*U[\d,.]+/i.test(p.title));
     tabs.sort((a,b)=>a.index-b.index);
-    const chosen = tabs.slice(0, MAX_WEEKS);
+    const chosen = tabs;
 
     const weeks = [];
     const chunkSize = 5;
