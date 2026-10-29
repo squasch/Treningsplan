@@ -144,6 +144,26 @@ h1{font-family:'Oswald',sans-serif;font-weight:600;font-size:clamp(26px,7vw,34px
 
 footer{margin-top:2.5rem;font-size:12px;color:var(--ink-muted);border-top:0.5px solid var(--border);padding-top:1rem;}
 
+.tabs{display:flex;gap:6px;background:var(--surface-2);border-radius:999px;padding:4px;margin:.25rem 0 .75rem;}
+.tab{flex:1;border:0;background:none;color:var(--ink-muted);border-radius:999px;padding:8px 12px;font-family:'Work Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;}
+.tab.active{background:var(--surface);color:var(--ink);box-shadow:0 0 0 0.5px var(--border);}
+#statsView[hidden]{display:none;}
+.st-tiles{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1rem;}
+.st-sec{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:1rem 1.15rem;margin-bottom:14px;}
+.st-sec h3{font-family:'Oswald',sans-serif;font-size:16px;font-weight:600;margin:0 0 .2rem;}
+.st-sec .st-sub{font-size:12px;color:var(--ink-muted);margin:0 0 .8rem;}
+.bars{display:flex;align-items:flex-end;gap:6px;height:110px;}
+.bar-col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:4px;}
+.bar{width:100%;max-width:34px;background:var(--accent);border-radius:5px 5px 0 0;min-height:2px;}
+.bar.full{background:var(--success);}
+.bar-val{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-muted);font-variant-numeric:tabular-nums;}
+.bar-lbl{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--ink-muted);white-space:nowrap;}
+.lift{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:0.5px solid var(--border);}
+.lift:first-of-type{border-top:none;}
+.lift .nm{flex:1 1 auto;min-width:0;font-size:13.5px;font-weight:500;line-height:1.3;}
+.lift .nm small{display:block;font-size:11px;color:var(--ink-muted);font-weight:400;font-family:'JetBrains Mono',monospace;}
+.lift svg{flex:0 0 auto;width:84px;height:28px;color:var(--accent);}
+.lift .lw{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13.5px;font-weight:600;min-width:62px;text-align:right;}
 .gate{display:none;min-height:70vh;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;}
 .gate p{color:var(--ink-muted);font-size:14px;margin:0;max-width:320px;}
 .gate .auth-btn{font-size:13px;padding:10px 20px;background:var(--accent);color:var(--accent-ink);border-color:var(--accent);}
@@ -184,14 +204,23 @@ body.locked .app{display:none;}
     </div>
   </header>
 
-  <nav class="ticker" id="ticker" aria-label="Velg uke"></nav>
-
-  <div class="week-head">
-    <h2 id="weekTitle">—</h2>
-    <span class="date" id="weekMeta"></span>
+  <div class="tabs" role="tablist">
+    <button class="tab active" id="tabPlan" role="tab" aria-selected="true">Plan</button>
+    <button class="tab" id="tabStats" role="tab" aria-selected="false">Statistikk</button>
   </div>
 
-  <div class="days" id="days"><div class="empty">Henter treningsplan…</div></div>
+  <div id="planView">
+    <nav class="ticker" id="ticker" aria-label="Velg uke"></nav>
+
+    <div class="week-head">
+      <h2 id="weekTitle">—</h2>
+      <span class="date" id="weekMeta"></span>
+    </div>
+
+    <div class="days" id="days"><div class="empty">Henter treningsplan…</div></div>
+  </div>
+
+  <div id="statsView" hidden></div>
 
   <footer>Henter live fra Google Sheets ved hver åpning. Dagsavkrysning lagres kun på denne enheten; rapportert vekt/reps per øvelse skrives til arket (krever innlogging). <span id="cacheNote"></span></footer>
   </div>
@@ -632,10 +661,171 @@ function renderStats(){
   document.getElementById('statTotal').textContent = doneT + '/' + totT;
 }
 
+let view = 'plan';
+
+function setView(v){
+  view = v;
+  document.getElementById('planView').hidden = (v !== 'plan');
+  document.getElementById('statsView').hidden = (v !== 'stats');
+  [['tabPlan','plan'],['tabStats','stats']].forEach(([id, name])=>{
+    const b = document.getElementById(id);
+    b.classList.toggle('active', v === name);
+    b.setAttribute('aria-selected', String(v === name));
+  });
+  if(v === 'stats') renderStatsTab();
+}
+
+function mk(tag, cls, text){
+  const e = document.createElement(tag);
+  if(cls) e.className = cls;
+  if(text !== undefined) e.textContent = text;
+  return e;
+}
+
+function num(s){
+  const m = String(s == null ? '' : s).replace(',', '.').match(/\d+(\.\d+)?/);
+  return m ? parseFloat(m[0]) : 0;
+}
+
+function fmtNum(n){ return (Math.round(n * 10) / 10).toString().replace('.', ','); }
+
+function statTile(value, label){
+  const t = mk('div', 'stat');
+  t.appendChild(mk('div', 'n', value));
+  t.appendChild(mk('div', 'l', label));
+  return t;
+}
+
+function barChart(items, maxVal, fmt){
+  const wrap = mk('div', 'bars');
+  items.forEach(it=>{
+    const col = mk('div', 'bar-col');
+    col.appendChild(mk('div', 'bar-val', fmt(it.value)));
+    const bar = mk('div', 'bar' + (it.full ? ' full' : ''));
+    bar.style.height = (maxVal > 0 ? Math.max(2, Math.round(it.value / maxVal * 78)) : 2) + 'px';
+    col.appendChild(bar);
+    col.appendChild(mk('div', 'bar-lbl', it.label));
+    wrap.appendChild(col);
+  });
+  return wrap;
+}
+
+function sparkline(values){
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 84 28');
+  const min = Math.min(...values), max = Math.max(...values);
+  const span = max - min || 1;
+  const pts = values.map((v, i)=>{
+    const x = values.length === 1 ? 42 : 4 + i * (76 / (values.length - 1));
+    const y = max === min ? 14 : 24 - ((v - min) / span) * 20;
+    return [x, y];
+  });
+  if(pts.length > 1){
+    const line = document.createElementNS(ns, 'polyline');
+    line.setAttribute('points', pts.map(p=>p.join(',')).join(' '));
+    line.setAttribute('fill', 'none');
+    line.setAttribute('stroke', 'currentColor');
+    line.setAttribute('stroke-width', '1.8');
+    line.setAttribute('stroke-linecap', 'round');
+    line.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(line);
+  }
+  const last = pts[pts.length - 1];
+  const dot = document.createElementNS(ns, 'circle');
+  dot.setAttribute('cx', last[0]); dot.setAttribute('cy', last[1]); dot.setAttribute('r', '2.8');
+  dot.setAttribute('fill', 'currentColor');
+  svg.appendChild(dot);
+  return svg;
+}
+
+function renderStatsTab(){
+  const root = document.getElementById('statsView');
+  root.innerHTML = '';
+  if(WEEKS.length === 0){
+    root.appendChild(mk('div', 'empty', 'Ingen data ennå. Trykk «Oppdater».'));
+    return;
+  }
+  const chrono = WEEKS.slice().reverse();
+
+  // per uke: fullførte økter og løftet volum (kg) av rapporterte verdier
+  const perWeek = chrono.map(w=>{
+    let volume = 0;
+    w.days.forEach(d=> d.exercises.forEach(ex=>{
+      const kg = num(ex.actualWeight);
+      if(!kg) return;
+      volume += (num(ex.actualSets) || num(ex.sets) || 1) * (num(ex.actualReps) || num(ex.reps) || 1) * kg;
+    }));
+    return {w, done: weekDoneCount(w), total: w.days.length, volume};
+  });
+  const totalDone = perWeek.reduce((n,x)=> n + x.done, 0);
+  const totalVol = perWeek.reduce((n,x)=> n + x.volume, 0);
+
+  // per øvelse: rapporterte vekter over tid
+  const lifts = new Map();
+  chrono.forEach(w=> w.days.forEach(d=> d.exercises.forEach(ex=>{
+    const kg = num(ex.actualWeight);
+    if(!kg) return;
+    if(!lifts.has(ex.name)) lifts.set(ex.name, []);
+    const reps = num(ex.actualReps) || num(ex.reps);
+    lifts.get(ex.name).push({kg, reps, week: w});
+  })));
+
+  const tiles = mk('div', 'st-tiles');
+  tiles.appendChild(statTile(String(totalDone), 'økter fullført'));
+  tiles.appendChild(statTile(fmtNum(totalVol / 1000) + ' t', 'løftet volum'));
+  tiles.appendChild(statTile(String(lifts.size), 'øvelser med data'));
+  root.appendChild(tiles);
+
+  const secDone = mk('section', 'st-sec');
+  secDone.appendChild(mk('h3', null, 'Fullførte økter per uke'));
+  secDone.appendChild(mk('p', 'st-sub', 'Grønn søyle = alle øktene i uken er fullført.'));
+  secDone.appendChild(barChart(
+    perWeek.map(x=>({label: shortLabel(x.w), value: x.done, full: x.done === x.total && x.total > 0})),
+    Math.max(...perWeek.map(x=>x.total)),
+    v=> String(v)
+  ));
+  root.appendChild(secDone);
+
+  const secVol = mk('section', 'st-sec');
+  secVol.appendChild(mk('h3', null, 'Volum per uke'));
+  secVol.appendChild(mk('p', 'st-sub', 'Sett × reps × vekt, regnet ut fra det du har rapportert (tonn).'));
+  secVol.appendChild(barChart(
+    perWeek.map(x=>({label: shortLabel(x.w), value: x.volume})),
+    Math.max(...perWeek.map(x=>x.volume)),
+    v=> v ? fmtNum(v / 1000) : '–'
+  ));
+  root.appendChild(secVol);
+
+  const secLifts = mk('section', 'st-sec');
+  secLifts.appendChild(mk('h3', null, 'Progresjon per øvelse'));
+  secLifts.appendChild(mk('p', 'st-sub', 'Siste rapporterte vekt. Est. 1RM (Epley) vises for øvelser med reps.'));
+  const rows = Array.from(lifts.entries()).sort((a,b)=> b[1].length - a[1].length || a[0].localeCompare(b[0], 'nb'));
+  if(rows.length === 0){
+    secLifts.appendChild(mk('div', 'empty', 'Ingen rapporterte vekter ennå. Logg vekt på en øvelse i planen.'));
+  }
+  rows.forEach(([name, pts])=>{
+    const row = mk('div', 'lift');
+    const nm = mk('div', 'nm', name);
+    const best = Math.max(...pts.map(p=>p.kg));
+    const e1rm = Math.max(...pts.map(p=> p.reps > 0 ? p.kg * (1 + p.reps / 30) : 0));
+    let sub = 'Best ' + fmtNum(best) + ' kg';
+    if(e1rm > 0) sub += ' · e1RM ' + fmtNum(e1rm) + ' kg';
+    sub += ' · ' + pts.length + (pts.length === 1 ? ' økt' : ' økter');
+    nm.appendChild(mk('small', null, sub));
+    row.appendChild(nm);
+    row.appendChild(sparkline(pts.map(p=>p.kg)));
+    row.appendChild(mk('div', 'lw', fmtNum(pts[pts.length - 1].kg) + ' kg'));
+    secLifts.appendChild(row);
+  });
+  root.appendChild(secLifts);
+}
+
 function renderAll(){
   renderTicker();
   renderWeek();
   renderStats();
+  if(view === 'stats') renderStatsTab();
 }
 
 function toggleDay(gid, di){
@@ -773,6 +963,8 @@ async function loadFromSheet(){
 }
 
 document.getElementById('refreshBtn').addEventListener('click', loadFromSheet);
+document.getElementById('tabPlan').addEventListener('click', ()=> setView('plan'));
+document.getElementById('tabStats').addEventListener('click', ()=> setView('stats'));
 document.getElementById('signInBtn').addEventListener('click', ()=> ensureAuth().catch(()=>{}));
 document.getElementById('gateBtn').addEventListener('click', ()=> ensureAuth().catch(()=>{
   document.getElementById('gateStatus').textContent = 'Innlogging mislyktes. Prøv igjen.';
