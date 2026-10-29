@@ -143,12 +143,26 @@ h1{font-family:'Oswald',sans-serif;font-weight:600;font-size:clamp(26px,7vw,34px
 .empty{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:2rem 1.2rem;text-align:center;color:var(--ink-muted);font-size:13.5px;}
 
 footer{margin-top:2.5rem;font-size:12px;color:var(--ink-muted);border-top:0.5px solid var(--border);padding-top:1rem;}
+
+.gate{display:none;min-height:70vh;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;}
+.gate p{color:var(--ink-muted);font-size:14px;margin:0;max-width:320px;}
+.gate .auth-btn{font-size:13px;padding:10px 20px;background:var(--accent);color:var(--accent-ink);border-color:var(--accent);}
+body.locked .gate{display:flex;}
+body.locked .app{display:none;}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h2 class="sr-only">Styrkeplan for Mathias: live treningsprogram hentet direkte fra Google Sheets, med daglig oversikt og avkrysning av fullførte økter.</h2>
 
+  <div class="gate" id="gate">
+    <h1>Styrkeplan Mathias</h1>
+    <p>Treningsplanen er låst. Logg inn med Google-kontoen som har tilgang til arket.</p>
+    <button class="auth-btn" id="gateBtn">Logg inn med Google</button>
+    <p class="status err" id="gateStatus"></p>
+  </div>
+
+  <div class="app" id="app">
   <header class="top">
     <div class="eyebrow-row">
       <div class="eyebrow" id="blockLabel">Blokk · Uke</div>
@@ -180,11 +194,11 @@ footer{margin-top:2.5rem;font-size:12px;color:var(--ink-muted);border-top:0.5px 
   <div class="days" id="days"><div class="empty">Henter treningsplan…</div></div>
 
   <footer>Henter live fra Google Sheets ved hver åpning. Dagsavkrysning lagres kun på denne enheten; rapportert vekt/reps per øvelse skrives til arket (krever innlogging). <span id="cacheNote"></span></footer>
+  </div>
 </div>
 
 <script>
 const SHEET_ID = '1dachUYIF2fl2WUWxoN5fXoBttnaY5Wt2qk5LWBYA3J4';
-const API_KEY = 'AIzaSyBKeMr9qvlL845XFooV_A6gaTE-61taDzc';
 const OAUTH_CLIENT_ID = '627760272879-faahr1r1j11uphdc512pgnsjv1lhtv10.apps.googleusercontent.com';
 const MAX_WEEKS = 10;
 const TRACK_KEY = 'styrkeplan_tracking_v1';
@@ -250,6 +264,37 @@ function setStatus(text, isErr){
 
 function isSignedIn(){ return !!accessToken && Date.now() < tokenExpiresAt; }
 
+function applyGate(){ document.body.classList.toggle('locked', !isSignedIn()); }
+
+function onSignedIn(){
+  renderAuthArea();
+  if(loadFromCache()) renderAll();
+  loadFromSheet();
+}
+
+// Lås opp og last data kun hvis siden faktisk var låst (ikke ved fornyelse midt i en lagring)
+function unlock(){
+  const wasLocked = document.body.classList.contains('locked');
+  applyGate();
+  if(wasLocked) onSignedIn(); else renderAuthArea();
+}
+
+function lockAndWipe(){
+  clearAuth(true);
+  try { localStorage.removeItem(CACHE_KEY); } catch(e) {}
+  WEEKS = [];
+  expandedEx = null;
+  renderAll();
+  renderAuthArea();
+  applyGate();
+}
+
+function checkSession(){
+  if(isSignedIn()) return;
+  applyGate();
+  if(hasConsented && tokenClient) trySilentRefresh();
+}
+
 function loadAuth(){
   try{
     const raw = localStorage.getItem(AUTH_KEY);
@@ -302,21 +347,28 @@ function createTokenClient(){
   });
 }
 
+let silentInFlight = false;
+function trySilentRefresh(){
+  // best-effort silent refresh so reopening the app within an active Google session
+  // doesn't require a click — no visible prompt if it works, silently does nothing if not
+  if(silentInFlight || !tokenClient) return;
+  silentInFlight = true;
+  tokenClient.callback = (resp)=>{
+    silentInFlight = false;
+    if(!resp.error){
+      accessToken = resp.access_token;
+      tokenExpiresAt = Date.now() + (Number(resp.expires_in || 3600) * 1000) - 30000;
+      saveAuth();
+      unlock();
+    }
+  };
+  tokenClient.error_callback = ()=>{ silentInFlight = false; };
+  tokenClient.requestAccessToken({prompt: ''});
+}
+
 function initAuth(){
   createTokenClient();
-  if(tokenClient && hasConsented && !isSignedIn()){
-    // best-effort silent refresh so reopening the app within an active Google session
-    // doesn't require a click — no visible prompt if it works, silently does nothing if not
-    tokenClient.callback = (resp)=>{
-      if(!resp.error){
-        accessToken = resp.access_token;
-        tokenExpiresAt = Date.now() + (Number(resp.expires_in || 3600) * 1000) - 30000;
-        saveAuth();
-        renderAuthArea();
-      }
-    };
-    tokenClient.requestAccessToken({prompt: ''});
-  }
+  if(tokenClient && hasConsented && !isSignedIn()) trySilentRefresh();
 }
 
 function ensureAuth(){
@@ -341,7 +393,7 @@ function ensureAuth(){
       tokenExpiresAt = Date.now() + (Number(resp.expires_in || 3600) * 1000) - 30000;
       hasConsented = true;
       saveAuth();
-      renderAuthArea();
+      unlock();
       resolve(accessToken);
     };
     tokenClient.requestAccessToken({prompt: promptMode});
@@ -350,8 +402,7 @@ function ensureAuth(){
 
 function signOut(){
   if(accessToken && window.google) google.accounts.oauth2.revoke(accessToken, ()=>{});
-  clearAuth(true);
-  renderAuthArea();
+  lockAndWipe();
 }
 
 function renderTicker(){
@@ -608,7 +659,7 @@ async function writeActual(week, ex, sets, reps, weight, comment){
     body: JSON.stringify({values: [[sets, reps, weight, comment]]})
   });
   if(!res.ok){
-    if(res.status === 401) clearAuth(false);
+    if(res.status === 401){ clearAuth(false); applyGate(); }
     let msg = 'HTTP ' + res.status;
     try { const body = await res.json(); if(body?.error?.message) msg = body.error.message; } catch(e){}
     throw new Error(msg);
@@ -620,8 +671,9 @@ async function writeActual(week, ex, sets, reps, weight, comment){
 }
 
 async function fetchJSON(url){
-  const res = await fetch(url);
+  const res = await fetch(url, {headers: {'Authorization': 'Bearer ' + accessToken}});
   if(!res.ok){
+    if(res.status === 401 || res.status === 403){ if(res.status === 401) clearAuth(false); applyGate(); }
     let msg = 'HTTP ' + res.status;
     try { const body = await res.json(); if(body?.error?.message) msg = body.error.message; } catch(e){}
     throw new Error(msg);
@@ -684,7 +736,7 @@ async function loadFromSheet(){
   btn.classList.add('spin');
   setStatus('Henter treningsplan…');
   try{
-    const meta = await fetchJSON(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?key=${API_KEY}&fields=sheets.properties`);
+    const meta = await fetchJSON(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets.properties`);
     const tabs = meta.sheets.map(s=>s.properties).filter(p=>/^B\d+\s*U[\d,.]+/i.test(p.title));
     tabs.sort((a,b)=>a.index-b.index);
     const chosen = tabs.slice(0, MAX_WEEKS);
@@ -694,7 +746,7 @@ async function loadFromSheet(){
     for(let i=0;i<chosen.length;i+=chunkSize){
       const chunk = chosen.slice(i, i+chunkSize);
       const rangesParam = chunk.map(t=>'ranges=' + encodeRange(t.title)).join('&');
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchGet?key=${API_KEY}&valueRenderOption=FORMATTED_VALUE&${rangesParam}`;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchGet?valueRenderOption=FORMATTED_VALUE&${rangesParam}`;
       const data = await fetchJSON(url);
       data.valueRanges.forEach((vr, j) => weeks.push(parseWeek(chunk[j], vr.values || [])));
     }
@@ -722,17 +774,19 @@ async function loadFromSheet(){
 
 document.getElementById('refreshBtn').addEventListener('click', loadFromSheet);
 document.getElementById('signInBtn').addEventListener('click', ()=> ensureAuth().catch(()=>{}));
+document.getElementById('gateBtn').addEventListener('click', ()=> ensureAuth().catch(()=>{
+  document.getElementById('gateStatus').textContent = 'Innlogging mislyktes. Prøv igjen.';
+}));
 document.addEventListener('visibilitychange', ()=>{
-  if(document.visibilityState === 'visible' && lastFetchedAt && (Date.now() - lastFetchedAt.getTime() > STALE_MS)){
-    loadFromSheet();
-  }
+  if(document.visibilityState !== 'visible') return;
+  if(!isSignedIn()){ checkSession(); return; }
+  if(lastFetchedAt && (Date.now() - lastFetchedAt.getTime() > STALE_MS)) loadFromSheet();
 });
+setInterval(checkSession, 30000);
 
-renderAuthArea();
+applyGate();
 window.addEventListener('load', initAuth);
-
-if(loadFromCache()) renderAll();
-loadFromSheet();
+if(isSignedIn()) onSignedIn();
 
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=> navigator.serviceWorker.register('sw.js').catch(()=>{}));
