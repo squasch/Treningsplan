@@ -222,7 +222,7 @@ body.locked .app{display:none;}
     <div class="stat-row">
       <div class="stat"><div class="n" id="statWeek">0/0</div><div class="l">denne uken</div></div>
       <div class="stat"><div class="n" id="statStreak">0</div><div class="l">økter på rad</div></div>
-      <div class="stat"><div class="n" id="statTotal">0/0</div><div class="l">alle uker</div></div>
+      <div class="stat"><div class="n" id="statTotal">0/0</div><div class="l">siden B2·U3</div></div>
     </div>
   </header>
 
@@ -251,15 +251,20 @@ body.locked .app{display:none;}
 <script>
 const SHEET_ID = '1dachUYIF2fl2WUWxoN5fXoBttnaY5Wt2qk5LWBYA3J4';
 const OAUTH_CLIENT_ID = '627760272879-faahr1r1j11uphdc512pgnsjv1lhtv10.apps.googleusercontent.com';
-const TRACK_FROM = {block: 2, week: 3};
-const TRACK_FROM_LABEL = 'B2·U3';
-function isTracked(w){
-  if(w.block == null) return false;
-  return w.block > TRACK_FROM.block || (w.block === TRACK_FROM.block && num(w.week) >= TRACK_FROM.week);
+// Appen bruker bare fanene fra og med B2 U3 av 31.08.2026 og nyere (nyeste fane først i arket).
+// Eldre blokker har samme B/U-navn, så starten finnes på dato, ikke bare på navn.
+function findStartTab(tabs){
+  const isB2U3 = t=> /^B0*2\s*U0*3(?![\d,.])/i.test(t.title);
+  const is31Aug2026 = t=>{
+    const m = t.title.match(/\b31\.0?8(?:\.(\d{2,4}))?/);
+    return !!m && (!m[1] || /26$/.test(m[1]));
+  };
+  let i = tabs.findIndex(t=> isB2U3(t) && is31Aug2026(t));
+  if(i < 0) i = tabs.findIndex(isB2U3);  // nyeste B2 U3 hvis datoen ikke står i fanenavnet
+  return i;
 }
-const PLAN_WEEKS = 10;  // antall uker som er valgbare i Plan; statistikken bruker alle
 const TRACK_KEY = 'styrkeplan_tracking_v1';
-const CACHE_KEY = 'styrkeplan_weeks_cache_v1';
+const CACHE_KEY = 'styrkeplan_weeks_cache_v2';
 const AUTH_KEY = 'styrkeplan_auth_v1';
 const STALE_MS = 5 * 60 * 1000;
 
@@ -469,7 +474,7 @@ function signOut(){
 function renderTicker(){
   const el = document.getElementById('ticker');
   el.innerHTML = '';
-  WEEKS.slice(0, PLAN_WEEKS).forEach((w,i)=>{
+  WEEKS.forEach((w,i)=>{
     const done = weekDoneCount(w);
     const btn = document.createElement('button');
     btn.className = 'chip' + (i===selectedIdx ? ' active' : '');
@@ -846,16 +851,12 @@ function renderStatsTab(){
   });
   const totalDone = perWeek.reduce((n,x)=> n + x.done, 0);
   const totalPlanned = perWeek.reduce((n,x)=> n + x.total, 0);
-  // Gjennomføring måles bare fra og med B2·U3 (31.08); eldre uker ble ikke krysset av.
-  const trackedWeeks = perWeek.filter(x=> isTracked(x.w));
-  const trackedDone = trackedWeeks.reduce((n,x)=> n + x.done, 0);
-  const trackedPlanned = trackedWeeks.reduce((n,x)=> n + x.total, 0);
   const totalVol = perWeek.reduce((n,x)=> n + x.volume, 0);
   const lifts = accLifts;
 
   const tiles = mk('div', 'st-tiles');
   tiles.appendChild(statTile(totalDone + '/' + totalPlanned, 'økter fullført'));
-  tiles.appendChild(statTile(trackedPlanned ? Math.round(trackedDone / trackedPlanned * 100) + ' %' : '–', 'gjennomføring fra ' + TRACK_FROM_LABEL));
+  tiles.appendChild(statTile(totalPlanned ? Math.round(totalDone / totalPlanned * 100) + ' %' : '–', 'gjennomføring'));
   tiles.appendChild(statTile(fmtNum(totalVol / 1000) + ' t', 'løftet volum'));
   tiles.appendChild(statTile(String(totalReps), 'reps hovedløft'));
   root.appendChild(tiles);
@@ -953,60 +954,22 @@ function renderStatsTab(){
     root.appendChild(secMain);
   }
 
-  // Oversikt over hele historikken: ett søyle per blokk (gjeldende blokk først)
-  const byBlock = new Map();
-  perWeek.forEach(x=>{
-    if(x.w.block == null) return;
-    if(!byBlock.has(x.w.block)) byBlock.set(x.w.block, {block: x.w.block, done: 0, total: 0, volume: 0, weeks: 0, tDone: 0, tTotal: 0});
-    const b = byBlock.get(x.w.block);
-    b.done += x.done; b.total += x.total; b.volume += x.volume; b.weeks++;
-    if(isTracked(x.w)){ b.tDone += x.done; b.tTotal += x.total; }
-  });
-  const blocks = Array.from(byBlock.values()).sort((a, b)=> b.block - a.block);
-  if(blocks.length > 1){
-    const secBlkVol = mk('section', 'st-sec');
-    secBlkVol.appendChild(mk('h3', null, 'Volum per blokk'));
-    secBlkVol.appendChild(mk('p', 'st-sub', 'Totalt løftet volum (tonn) i hver blokk, hele historikken.'));
-    secBlkVol.appendChild(barChart(
-      blocks.map(b=>({label: 'B' + b.block, value: b.volume})),
-      Math.max(...blocks.map(b=>b.volume)),
-      v=> v ? fmtNum(v / 1000) : '–'
-    ));
-    root.appendChild(secBlkVol);
-
-  }
-  const trackedBlocks = blocks.filter(b=> b.tTotal > 0);
-  if(trackedBlocks.length){
-    const secBlkDone = mk('section', 'st-sec');
-    secBlkDone.appendChild(mk('h3', null, 'Gjennomføring per blokk'));
-    secBlkDone.appendChild(mk('p', 'st-sub', 'Andel avkryssede økter (%), fra ' + TRACK_FROM_LABEL + ' og nyere. Grønn = alle fullført.'));
-    secBlkDone.appendChild(barChart(
-      trackedBlocks.map(b=>({label: 'B' + b.block, value: Math.round(b.tDone / b.tTotal * 100), full: b.tDone === b.tTotal})),
-      100,
-      v=> v + '%'
-    ));
-    root.appendChild(secBlkDone);
-  }
-
-  // Detaljer for de siste ukene
-  const recentWeeks = perWeek.slice(0, PLAN_WEEKS);
-
   const secDone = mk('section', 'st-sec');
   secDone.appendChild(mk('h3', null, 'Fullførte økter per uke'));
-  secDone.appendChild(mk('p', 'st-sub', 'Siste ' + recentWeeks.length + ' uker. Grønn søyle = alle øktene i uken er fullført.'));
+  secDone.appendChild(mk('p', 'st-sub', 'Grønn søyle = alle øktene i uken er fullført.'));
   secDone.appendChild(barChart(
-    recentWeeks.map(x=>({label: shortLabel(x.w), value: x.done, full: x.done === x.total && x.total > 0})),
-    Math.max(...recentWeeks.map(x=>x.total)),
+    perWeek.map(x=>({label: shortLabel(x.w), value: x.done, full: x.done === x.total && x.total > 0})),
+    Math.max(...perWeek.map(x=>x.total)),
     v=> String(v)
   ));
   root.appendChild(secDone);
 
   const secVol = mk('section', 'st-sec');
   secVol.appendChild(mk('h3', null, 'Volum per uke'));
-  secVol.appendChild(mk('p', 'st-sub', 'Siste ' + recentWeeks.length + ' uker. Sett × reps × vekt (tonn), fra rapporterte verdier og avkryssede dager.'));
+  secVol.appendChild(mk('p', 'st-sub', 'Sett × reps × vekt (tonn), fra rapporterte verdier og avkryssede dager.'));
   secVol.appendChild(barChart(
-    recentWeeks.map(x=>({label: shortLabel(x.w), value: x.volume})),
-    Math.max(...recentWeeks.map(x=>x.volume)),
+    perWeek.map(x=>({label: shortLabel(x.w), value: x.volume})),
+    Math.max(...perWeek.map(x=>x.volume)),
     v=> v ? fmtNum(v / 1000) : '–'
   ));
   root.appendChild(secVol);
@@ -1232,7 +1195,9 @@ async function loadFromSheet(){
     appTabExists = meta.sheets.some(s=> s.properties.title === APP_TAB);
     const tabs = meta.sheets.map(s=>s.properties).filter(p=>/^B\d+\s*U[\d,.]+/i.test(p.title));
     tabs.sort((a,b)=>a.index-b.index);
-    const chosen = tabs;
+    const startIdx = findStartTab(tabs);
+    const chosen = startIdx >= 0 ? tabs.slice(0, startIdx + 1) : tabs.slice(0, 10);
+    if(startIdx < 0) console.warn('Fant ikke B2 U3 (31.08) i arket; henter de 10 nyeste ukene.');
 
     const weeks = [];
     const chunkSize = 5;
