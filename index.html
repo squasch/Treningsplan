@@ -776,10 +776,13 @@ function renderStatsTab(){
   }
   const chrono = WEEKS.slice().reverse();
 
-  // En gjennomført øvelse: rapportert vekt, ellers planlagt vekt hvis dagen er avkrysset.
+  // En gjennomført øvelse: rapportert vekt. Mangler den, antas planlagt vekt som gjennomført i tidligere
+  // blokker; i gjeldende blokk gjelder det bare hovedøvelser på avkryssede dager.
+  const curBlock = WEEKS[0].block;
   function performed(w, di, ex, acc){
     const aw = num(ex.actualWeight);
-    if(!aw && (acc || !isDone(w.gid, di) || /%/.test(ex.weight))) return null;
+    const past = w.block != null && curBlock != null && w.block < curBlock;
+    if(!aw && (/%/.test(ex.weight) || (!past && (acc || !isDone(w.gid, di))))) return null;
     const kg = aw || num(ex.weight);
     if(!kg) return null;
     return {
