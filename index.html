@@ -222,7 +222,7 @@ body.locked .app{display:none;}
 
   <div id="statsView" hidden></div>
 
-  <footer>Henter live fra Google Sheets ved hver åpning. Dagsavkrysning lagres kun på denne enheten; rapportert vekt/reps per øvelse skrives til arket (krever innlogging). <span id="cacheNote"></span></footer>
+  <footer>Henter live fra Google Sheets ved hver åpning. Dagsavkrysning synkroniseres via en skjult fane («Appdata») i arket; rapportert vekt/reps per øvelse skrives til arket (krever innlogging). <span id="cacheNote"></span></footer>
   </div>
 </div>
 
@@ -312,6 +312,8 @@ function lockAndWipe(){
   clearAuth(true);
   try { localStorage.removeItem(CACHE_KEY); } catch(e) {}
   WEEKS = [];
+  tracking = {};
+  try { localStorage.removeItem(TRACK_KEY); } catch(e) {}
   expandedEx = null;
   renderAll();
   renderAuthArea();
@@ -834,6 +836,70 @@ function toggleDay(gid, di){
   tracking[id] = {done: !cur, doneAt: new Date().toISOString()};
   saveTracking();
   renderAll();
+  syncTracking();
+}
+
+// Avkrysning synkroniseres via en skjult fane i arket, slik at den følger Google-kontoen på tvers av enheter.
+// Nyeste doneAt per dag vinner.
+function mergeTracking(remote){
+  let changedLocal = false, changedRemote = false;
+  const ids = new Set([...Object.keys(tracking), ...Object.keys(remote)]);
+  ids.forEach(id=>{
+    const l = tracking[id], r = remote[id];
+    if(!r){ changedRemote = true; return; }
+    if(!l || (r.doneAt || '') > (l.doneAt || '')){ tracking[id] = r; changedLocal = true; }
+    else if((l.doneAt || '') > (r.doneAt || '')) changedRemote = true;
+  });
+  return {changedLocal, changedRemote};
+}
+
+async function writeTracking(){
+  if(!appTabExists){
+    try{
+      await fetchJSON(SHEETS_BASE + ':batchUpdate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({requests: [{addSheet: {properties: {title: APP_TAB, hidden: true}}}]})
+      });
+    } catch(e){
+      if(!/already exists/i.test(e.message)) throw e;
+    }
+    appTabExists = true;
+  }
+  const rows = [['id', 'done', 'doneAt']].concat(
+    Object.entries(tracking).map(([id, t])=> [id, t.done ? '1' : '0', t.doneAt || ''])
+  );
+  const range = encodeURIComponent(APP_TAB + '!A1:C' + rows.length);
+  await fetchJSON(`${SHEETS_BASE}/values/${range}?valueInputOption=RAW`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({values: rows})
+  });
+}
+
+let syncing = false, syncAgain = false;
+async function syncTracking(){
+  if(!isSignedIn()) return;
+  if(syncing){ syncAgain = true; return; }
+  syncing = true;
+  try{
+    do{
+      syncAgain = false;
+      const remote = {};
+      if(appTabExists){
+        const data = await fetchJSON(`${SHEETS_BASE}/values/${encodeURIComponent(APP_TAB + '!A2:C5000')}`);
+        (data.values || []).forEach(r=>{ if(r[0]) remote[r[0]] = {done: r[1] === '1', doneAt: r[2] || ''}; });
+      }
+      const m = mergeTracking(remote);
+      if(m.changedLocal){ saveTracking(); renderAll(); }
+      if(m.changedRemote) await writeTracking();
+    } while(syncAgain);
+  } catch(e){
+    console.error(e);
+    setStatus('Kunne ikke synkronisere avkrysning: ' + e.message, true);
+  } finally {
+    syncing = false;
+  }
 }
 
 async function writeActual(week, ex, sets, reps, weight, comment){
@@ -860,10 +926,16 @@ async function writeActual(week, ex, sets, reps, weight, comment){
   ex.comment = comment;
 }
 
-async function fetchJSON(url){
-  const res = await fetch(url, {headers: {'Authorization': 'Bearer ' + accessToken}});
+const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets/' + SHEET_ID;
+const APP_TAB = 'Appdata';
+let appTabExists = false;
+
+async function fetchJSON(url, opts){
+  const o = Object.assign({}, opts);
+  o.headers = Object.assign({'Authorization': 'Bearer ' + accessToken}, o.headers);
+  const res = await fetch(url, o);
   if(!res.ok){
-    if(res.status === 401 || res.status === 403){ if(res.status === 401) clearAuth(false); applyGate(); }
+    if(res.status === 401){ clearAuth(false); applyGate(); }
     let msg = 'HTTP ' + res.status;
     try { const body = await res.json(); if(body?.error?.message) msg = body.error.message; } catch(e){}
     throw new Error(msg);
@@ -927,6 +999,7 @@ async function loadFromSheet(){
   setStatus('Henter treningsplan…');
   try{
     const meta = await fetchJSON(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets.properties`);
+    appTabExists = meta.sheets.some(s=> s.properties.title === APP_TAB);
     const tabs = meta.sheets.map(s=>s.properties).filter(p=>/^B\d+\s*U[\d,.]+/i.test(p.title));
     tabs.sort((a,b)=>a.index-b.index);
     const chosen = tabs.slice(0, MAX_WEEKS);
@@ -947,6 +1020,7 @@ async function loadFromSheet(){
     saveCache();
     setStatus('Oppdatert ' + lastFetchedAt.toLocaleTimeString('nb-NO', {hour:'2-digit', minute:'2-digit'}));
     document.getElementById('cacheNote').textContent = '';
+    syncTracking();
   } catch(err){
     console.error(err);
     const hadCache = loadFromCache();
