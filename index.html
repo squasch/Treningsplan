@@ -158,6 +158,19 @@ footer{margin-top:2.5rem;font-size:12px;color:var(--ink-muted);border-top:0.5px 
 .bar.full{background:var(--success);}
 .bar-val{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-muted);font-variant-numeric:tabular-nums;}
 .bar-lbl{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--ink-muted);white-space:nowrap;}
+.ml{padding:12px 0;border-top:0.5px solid var(--border);}
+.ml:first-of-type{border-top:none;padding-top:2px;}
+.ml-head{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin-bottom:8px;}
+.ml-name{font-family:'Oswald',sans-serif;font-size:16px;font-weight:500;}
+.ml-e{text-align:right;display:flex;flex-direction:column;}
+.ml-e b{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:20px;color:var(--accent);line-height:1.1;}
+.ml-e span,.ml-cell span{font-size:10.5px;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.05em;}
+.ml-mini{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px;}
+.ml-cell{background:var(--surface-2);border-radius:10px;padding:7px 10px;display:flex;flex-direction:column;gap:2px;}
+.ml-cell b{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13.5px;font-weight:600;}
+.ml-spark{color:var(--accent);margin:2px 0 6px;}
+.ml-spark svg{width:100%;height:auto;display:block;}
+.ml-row{display:flex;justify-content:space-between;gap:10px;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:12px;color:var(--ink-muted);padding:3px 0;}
 .lift{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:0.5px solid var(--border);}
 .lift:first-of-type{border-top:none;}
 .lift .nm{flex:1 1 auto;min-width:0;font-size:13.5px;font-weight:500;line-height:1.3;}
@@ -615,7 +628,8 @@ function renderWeek(){
           try{
             await writeActual(w, ex, setsInput.value, repsInput.value, wtInput.value, cmInput.value);
             expandedEx = null;
-            renderWeek();
+            autoCompleteDay(w, di, d);
+            renderAll();
           } catch(err){
             const msg = err.message === 'no token client' ? 'pålogging med Google er ikke satt opp ennå' : err.message;
             setStatus('Kunne ikke lagre: ' + msg, true);
@@ -712,15 +726,16 @@ function barChart(items, maxVal, fmt){
   return wrap;
 }
 
-function sparkline(values){
+function sparkline(values, W, H){
+  W = W || 84; H = H || 28;
   const ns = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('viewBox', '0 0 84 28');
+  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
   const min = Math.min(...values), max = Math.max(...values);
   const span = max - min || 1;
   const pts = values.map((v, i)=>{
-    const x = values.length === 1 ? 42 : 4 + i * (76 / (values.length - 1));
-    const y = max === min ? 14 : 24 - ((v - min) / span) * 20;
+    const x = values.length === 1 ? W / 2 : 4 + i * ((W - 8) / (values.length - 1));
+    const y = max === min ? H / 2 : (H - 4) - ((v - min) / span) * (H - 8);
     return [x, y];
   });
   if(pts.length > 1){
@@ -750,34 +765,106 @@ function renderStatsTab(){
   }
   const chrono = WEEKS.slice().reverse();
 
-  // per uke: fullførte økter og løftet volum (kg) av rapporterte verdier
-  const perWeek = chrono.map(w=>{
-    let volume = 0;
-    w.days.forEach(d=> d.exercises.forEach(ex=>{
-      const kg = num(ex.actualWeight);
-      if(!kg) return;
-      volume += (num(ex.actualSets) || num(ex.sets) || 1) * (num(ex.actualReps) || num(ex.reps) || 1) * kg;
+  // En gjennomført øvelse: rapportert vekt, ellers planlagt vekt hvis dagen er avkrysset.
+  function performed(w, di, ex, acc){
+    const aw = num(ex.actualWeight);
+    if(!aw && (acc || !isDone(w.gid, di) || /%/.test(ex.weight))) return null;
+    const kg = aw || num(ex.weight);
+    if(!kg) return null;
+    return {
+      kg,
+      sets: num(ex.actualSets) || num(ex.sets) || 1,
+      reps: num(ex.actualReps) || num(ex.reps),
+      reported: !!aw
+    };
+  }
+  const e1rm = (kg, reps)=> reps > 1 ? kg * (1 + reps / 30) : kg;
+
+  const perWeek = WEEKS.map(w=>({w, done: weekDoneCount(w), total: w.days.length, volume: 0}));
+  const mainLifts = new Map();  // hovedøvelser (rene rep-tall)
+  const accLifts = new Map();   // tilleggsøvelser (rapportert vekt)
+  let totalReps = 0;
+  chrono.forEach(w=>{
+    const pw = perWeek[WEEKS.indexOf(w)];
+    w.days.forEach((d, di)=> d.exercises.forEach(ex=>{
+      const acc = isAccessory(ex);
+      const p = performed(w, di, ex, acc);
+      if(!p) return;
+      const vol = p.sets * (p.reps || 1) * p.kg;
+      pw.volume += vol;
+      const map = acc ? accLifts : mainLifts;
+      if(!map.has(ex.name)) map.set(ex.name, []);
+      map.get(ex.name).push({kg: p.kg, sets: p.sets, reps: p.reps, vol, reported: p.reported, e: e1rm(p.kg, p.reps), week: w, day: di});
+      if(!acc) totalReps += p.sets * p.reps;
     }));
-    return {w, done: weekDoneCount(w), total: w.days.length, volume};
   });
   const totalDone = perWeek.reduce((n,x)=> n + x.done, 0);
+  const totalPlanned = perWeek.reduce((n,x)=> n + x.total, 0);
   const totalVol = perWeek.reduce((n,x)=> n + x.volume, 0);
-
-  // per øvelse: rapporterte vekter over tid
-  const lifts = new Map();
-  chrono.forEach(w=> w.days.forEach(d=> d.exercises.forEach(ex=>{
-    const kg = num(ex.actualWeight);
-    if(!kg) return;
-    if(!lifts.has(ex.name)) lifts.set(ex.name, []);
-    const reps = num(ex.actualReps) || num(ex.reps);
-    lifts.get(ex.name).push({kg, reps, week: w});
-  })));
+  const lifts = accLifts;
 
   const tiles = mk('div', 'st-tiles');
-  tiles.appendChild(statTile(String(totalDone), 'økter fullført'));
+  tiles.appendChild(statTile(totalDone + '/' + totalPlanned, 'økter fullført'));
+  tiles.appendChild(statTile(totalPlanned ? Math.round(totalDone / totalPlanned * 100) + ' %' : '–', 'gjennomføring'));
   tiles.appendChild(statTile(fmtNum(totalVol / 1000) + ' t', 'løftet volum'));
-  tiles.appendChild(statTile(String(lifts.size), 'øvelser med data'));
+  tiles.appendChild(statTile(String(totalReps), 'reps hovedløft'));
   root.appendChild(tiles);
+
+  // Hovedøvelser: ett kort per løft
+  if(mainLifts.size){
+    const secMain = mk('section', 'st-sec');
+    secMain.appendChild(mk('h3', null, 'Hovedøvelser'));
+    secMain.appendChild(mk('p', 'st-sub', 'Basert på rapportert vekt, eller planlagt vekt for avkryssede dager. Est. 1RM etter Epley.'));
+    Array.from(mainLifts.entries()).sort((a,b)=> b[1].length - a[1].length || a[0].localeCompare(b[0], 'nb')).forEach(([name, pts])=>{
+      const card = mk('div', 'ml');
+      const last = pts[pts.length - 1], first = pts[0];
+      const head = mk('div', 'ml-head');
+      head.appendChild(mk('div', 'ml-name', name));
+      const big = mk('div', 'ml-e');
+      big.appendChild(mk('b', null, fmtNum(last.e) + ' kg'));
+      big.appendChild(mk('span', null, 'est. 1RM nå'));
+      head.appendChild(big);
+      card.appendChild(head);
+
+      const bestKg = Math.max(...pts.map(p=>p.kg));
+      const bestE = Math.max(...pts.map(p=>p.e));
+      const vol = pts.reduce((n,p)=> n + p.vol, 0);
+      const reps = pts.reduce((n,p)=> n + p.sets * p.reps, 0);
+      const diff = last.e - first.e;
+      const mini = mk('div', 'ml-mini');
+      [
+        ['Tyngste', fmtNum(bestKg) + ' kg'],
+        ['Best e1RM', fmtNum(bestE) + ' kg'],
+        ['Endring', pts.length > 1 ? (diff >= 0 ? '+' : '−') + fmtNum(Math.abs(diff)) + ' kg' : '–'],
+        ['Volum', fmtNum(vol / 1000) + ' t'],
+        ['Reps', String(reps)],
+        ['Økter', String(pts.length)]
+      ].forEach(([l, v])=>{
+        const c = mk('div', 'ml-cell');
+        c.appendChild(mk('b', null, v));
+        c.appendChild(mk('span', null, l));
+        mini.appendChild(c);
+      });
+      card.appendChild(mini);
+
+      if(pts.length > 1){
+        const sp = mk('div', 'ml-spark');
+        sp.appendChild(sparkline(pts.map(p=>p.e), 300, 56));
+        card.appendChild(sp);
+      }
+
+      const recent = mk('div', 'ml-recent');
+      pts.slice(-4).reverse().forEach(p=>{
+        const r = mk('div', 'ml-row');
+        r.appendChild(mk('span', null, shortLabel(p.week) + ' · D' + (p.day + 1)));
+        r.appendChild(mk('span', null, p.sets + '×' + (p.reps || '–') + ' @ ' + fmtNum(p.kg) + ' kg' + (p.reported ? '' : ' (plan)')));
+        recent.appendChild(r);
+      });
+      card.appendChild(recent);
+      secMain.appendChild(card);
+    });
+    root.appendChild(secMain);
+  }
 
   const secDone = mk('section', 'st-sec');
   secDone.appendChild(mk('h3', null, 'Fullførte økter per uke'));
@@ -791,7 +878,7 @@ function renderStatsTab(){
 
   const secVol = mk('section', 'st-sec');
   secVol.appendChild(mk('h3', null, 'Volum per uke'));
-  secVol.appendChild(mk('p', 'st-sub', 'Sett × reps × vekt, regnet ut fra det du har rapportert (tonn).'));
+  secVol.appendChild(mk('p', 'st-sub', 'Sett × reps × vekt (tonn), fra rapporterte verdier og avkryssede dager.'));
   secVol.appendChild(barChart(
     perWeek.map(x=>({label: shortLabel(x.w), value: x.volume})),
     Math.max(...perWeek.map(x=>x.volume)),
@@ -800,8 +887,8 @@ function renderStatsTab(){
   root.appendChild(secVol);
 
   const secLifts = mk('section', 'st-sec');
-  secLifts.appendChild(mk('h3', null, 'Progresjon per øvelse'));
-  secLifts.appendChild(mk('p', 'st-sub', 'Siste rapporterte vekt. Est. 1RM (Epley) vises for øvelser med reps.'));
+  secLifts.appendChild(mk('h3', null, 'Tilleggsøvelser'));
+  secLifts.appendChild(mk('p', 'st-sub', 'Siste rapporterte vekt, tyngste vekt og utvikling over tid.'));
   const rows = Array.from(lifts.entries()).sort((a,b)=> b[1].length - a[1].length || a[0].localeCompare(b[0], 'nb'));
   if(rows.length === 0){
     secLifts.appendChild(mk('div', 'empty', 'Ingen rapporterte vekter ennå. Logg vekt på en øvelse i planen.'));
@@ -810,9 +897,7 @@ function renderStatsTab(){
     const row = mk('div', 'lift');
     const nm = mk('div', 'nm', name);
     const best = Math.max(...pts.map(p=>p.kg));
-    const e1rm = Math.max(...pts.map(p=> p.reps > 0 ? p.kg * (1 + p.reps / 30) : 0));
-    let sub = 'Best ' + fmtNum(best) + ' kg';
-    if(e1rm > 0) sub += ' · e1RM ' + fmtNum(e1rm) + ' kg';
+    let sub = 'Tyngste ' + fmtNum(best) + ' kg';
     sub += ' · ' + pts.length + (pts.length === 1 ? ' økt' : ' økter');
     nm.appendChild(mk('small', null, sub));
     row.appendChild(nm);
@@ -828,6 +913,18 @@ function renderAll(){
   renderWeek();
   renderStats();
   if(view === 'stats') renderStatsTab();
+}
+
+// Markerer dagen som fullført når alle hovedøvelsene (rene rep-tall) har rapportert vekt.
+// Fjerner aldri en avkrysning av seg selv.
+function autoCompleteDay(w, di, day){
+  if(isDone(w.gid, di)) return;
+  const main = day.exercises.filter(e=> !isAccessory(e));
+  if(main.length === 0 || !main.every(e=> num(e.actualWeight) > 0)) return;
+  tracking[dayId(w.gid, di)] = {done: true, doneAt: new Date().toISOString()};
+  saveTracking();
+  syncTracking();
+  setStatus('Økten er automatisk markert som fullført.');
 }
 
 function toggleDay(gid, di){
