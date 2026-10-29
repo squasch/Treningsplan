@@ -161,7 +161,16 @@ footer{margin-top:2.5rem;font-size:12px;color:var(--ink-muted);border-top:0.5px 
 .ml{padding:12px 0;border-top:0.5px solid var(--border);}
 .ml:first-of-type{border-top:none;padding-top:2px;}
 .ml-head{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin-bottom:8px;}
+.ml-head{cursor:pointer;}
 .ml-name{font-family:'Oswald',sans-serif;font-size:16px;font-weight:500;}
+.ml-chev{display:inline-block;margin-left:8px;color:var(--ink-muted);transition:transform .15s;}
+.ml-chev.open{transform:rotate(90deg);color:var(--accent);}
+.ml-detail{margin-top:10px;padding-top:10px;border-top:0.5px dashed var(--border);}
+.ml-detail-h{font-size:11px;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;}
+.ml-grp{background:var(--surface-2);border-radius:10px;padding:8px 10px;margin-bottom:8px;}
+.ml-grp-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;font-size:13px;}
+.ml-grp-h span{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--accent);}
+.ml-row.pr{color:var(--success-ink);font-weight:600;}
 .ml-e{text-align:right;display:flex;flex-direction:column;}
 .ml-e b{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:20px;color:var(--accent);line-height:1.1;}
 .ml-e span,.ml-cell span{font-size:10.5px;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.05em;}
@@ -678,6 +687,7 @@ function renderStats(){
 }
 
 let view = 'plan';
+const openLifts = new Set();
 
 function setView(v){
   view = v;
@@ -819,7 +829,14 @@ function renderStatsTab(){
       const card = mk('div', 'ml');
       const last = pts[pts.length - 1], first = pts[0];
       const head = mk('div', 'ml-head');
-      head.appendChild(mk('div', 'ml-name', name));
+      const open = openLifts.has(name);
+      const nameEl = mk('div', 'ml-name', name);
+      nameEl.appendChild(mk('span', 'ml-chev' + (open ? ' open' : ''), '›'));
+      head.appendChild(nameEl);
+      head.addEventListener('click', ()=>{
+        if(openLifts.has(name)) openLifts.delete(name); else openLifts.add(name);
+        renderStatsTab();
+      });
       const big = mk('div', 'ml-e');
       big.appendChild(mk('b', null, fmtNum(last.e) + ' kg'));
       big.appendChild(mk('span', null, 'est. 1RM nå'));
@@ -861,6 +878,35 @@ function renderStatsTab(){
         recent.appendChild(r);
       });
       card.appendChild(recent);
+
+      if(open){
+        // Alle gjennomføringer gruppert på antall repetisjoner, med dato og vekt
+        const det = mk('div', 'ml-detail');
+        det.appendChild(mk('div', 'ml-detail-h', 'Vekt fordelt på repetisjoner'));
+        const byReps = new Map();
+        pts.forEach(p=>{
+          const k = p.reps || 0;
+          if(!byReps.has(k)) byReps.set(k, []);
+          byReps.get(k).push(p);
+        });
+        Array.from(byReps.keys()).sort((a, b)=> a - b).forEach(k=>{
+          const list = byReps.get(k);
+          const top = Math.max(...list.map(p=>p.kg));
+          const g = mk('div', 'ml-grp');
+          const gh = mk('div', 'ml-grp-h');
+          gh.appendChild(mk('b', null, k ? k + (k === 1 ? ' rep' : ' reps') : 'Reps ukjent'));
+          gh.appendChild(mk('span', null, 'Beste ' + fmtNum(top) + ' kg'));
+          g.appendChild(gh);
+          list.slice().reverse().forEach(p=>{
+            const r = mk('div', 'ml-row' + (p.kg === top ? ' pr' : ''));
+            r.appendChild(mk('span', null, (dateBadge(p.week.title) || shortLabel(p.week)) + ' · D' + (p.day + 1)));
+            r.appendChild(mk('span', null, p.sets + '×' + (k || '–') + ' @ ' + fmtNum(p.kg) + ' kg' + (p.reported ? '' : ' (plan)')));
+            g.appendChild(r);
+          });
+          det.appendChild(g);
+        });
+        card.appendChild(det);
+      }
       secMain.appendChild(card);
     });
     root.appendChild(secMain);
